@@ -1,0 +1,87 @@
+import 'package:flutter/material.dart';
+import 'package:shop/firebase_service.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
+class UserInfoScreen extends StatefulWidget {
+  const UserInfoScreen({
+    Key? key,
+    required this.userId,
+    required this.emailVerified,
+  }) : super(key: key);
+
+  final String userId; // Храним userId
+  final bool emailVerified; // Храним статус проверки email
+
+  @override
+  _UserInfoScreenState createState() => _UserInfoScreenState();
+}
+
+class _UserInfoScreenState extends State<UserInfoScreen> {
+  late Future<DocumentSnapshot<Map<String, dynamic>>> _userDataFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    // Инициализируем Future для загрузки данных пользователя
+    _userDataFuture = FirebaseService().firestore.collection('users').doc(widget.userId).get();
+  }
+
+
+  void _refreshData() {
+    setState(() {
+      // Обновляем Future при нажатии на кнопку
+      _userDataFuture = FirebaseService().firestore.collection('users').doc(widget.userId).get();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Center(
+        child: FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+          future: _userDataFuture,
+          builder: (BuildContext context, AsyncSnapshot<DocumentSnapshot<Map<String, dynamic>>> snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return CircularProgressIndicator();
+            } else if (snapshot.hasError) {
+              return Text('Ошибка: ${snapshot.error}');
+            } else if (!snapshot.hasData || !snapshot.data!.exists) {
+              return Text('Данные пользователя не найдены');
+            }
+
+            // Получаем данные пользователя из Firestore
+            final userData = snapshot.data!.data()!;
+            final username = userData['username'] ?? 'Не указано';
+            final email = userData['email'] ?? 'Не указано';
+
+            return Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text('User name: $username'),
+                Text('User email: $email'),
+                Text('Email verified: ${widget.emailVerified}'), // Отображаем статус проверки email
+                if (!widget.emailVerified) // Если email не подтвержден, показываем кнопку
+                  TextButton(
+                    onPressed: () {
+                      FirebaseService().onVerifyEmail(); // Метод для подтверждения email
+                    },
+                    child: Text('Подтвердить Email'),
+                  ),
+                ElevatedButton(
+                  onPressed: _refreshData, // Метод для обновления данных
+                  child: Text('Обновить данные'), // Кнопка для обновления
+                ),
+                TextButton(
+                  onPressed: () {
+                    FirebaseService().logOut();
+                  },
+                  child: Text('Выйти'),
+                ),
+              ],
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
