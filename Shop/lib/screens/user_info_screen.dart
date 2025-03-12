@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shop/firebase_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shop/screens/addProductScreen.dart';
+import 'package:shop/screens/productListScreen.dart';
 
 class UserInfoScreen extends StatefulWidget {
   const UserInfoScreen({
@@ -75,7 +77,26 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                   onPressed: () {
                     FirebaseService().logOut();
                   },
+
                   child: Text('Выйти'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => ProductListScreen()),
+                    );
+                  },
+                  child: Text('Показать продукты'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => AddProductScreen()),
+                    );
+                  },
+                  child: Text('Добавить продукты'),
                 ),
               ],
             );

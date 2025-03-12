@@ -1,0 +1,2 @@
+D:/diploma/Shop/android/app/.cxx/Debug/6t665lh2/x86/CMakeFiles/edit_cache.dir
+D:/diploma/Shop/android/app/.cxx/Debug/6t665lh2/x86/CMakeFiles/rebuild_cache.dir

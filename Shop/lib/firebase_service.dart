@@ -31,7 +31,7 @@ class FirebaseService {
     }
   }
 
-  Future<void> onRegister({required String email, required String password, required String username}) async {
+  Future<void> onRegister({required String email, required String password, required String username, String role = "user"}) async {
     try {
       final credential = await auth.createUserWithEmailAndPassword(
         email: email,
@@ -45,6 +45,7 @@ class FirebaseService {
       await firestore.collection('users').doc(userId).set({
         'username': username,
         'email': email,
+        'role': role,
         'card_token': '',
         'created_at': FieldValue.serverTimestamp(),
       });
@@ -79,5 +80,16 @@ class FirebaseService {
       }
     }
     return null; // Возвращаем null, если пользователь не аутентифицирован
+  }
+
+
+  // prodcuts
+  Future<List<Map<String, dynamic>>> getProducts() async {
+    QuerySnapshot<Map<String, dynamic>> productSnapshot =
+    await firestore.collection('products').get();
+
+    return productSnapshot.docs
+        .map((doc) => doc.data())
+        .toList();
   }
 }

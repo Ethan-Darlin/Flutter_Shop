@@ -1,0 +1,2 @@
+D:/diploma/Shop/android/app/.cxx/Debug/701g5o3v/armeabi-v7a/CMakeFiles/edit_cache.dir
+D:/diploma/Shop/android/app/.cxx/Debug/701g5o3v/armeabi-v7a/CMakeFiles/rebuild_cache.dir
