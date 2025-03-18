@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:shop/firebase_service.dart';
-import 'dart:convert'; // Для декодирования Base64
-import 'dart:typed_data'; // Для работы с Uint8List
+import 'package:shop/screens/cartScreen.dart';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:shop/screens/productDetailScreen.dart';
+
 class ProductListScreen extends StatefulWidget {
   @override
   _ProductListScreenState createState() => _ProductListScreenState();
@@ -9,11 +13,37 @@ class ProductListScreen extends StatefulWidget {
 
 class _ProductListScreenState extends State<ProductListScreen> {
   late Future<List<Map<String, dynamic>>> _productsFuture;
+  int _selectedIndex = 0; // Для отслеживания выбранного индекса
 
   @override
   void initState() {
     super.initState();
     _productsFuture = FirebaseService().getProducts();
+  }
+
+  Future<void> _addToCart(Map<String, dynamic> product) async {
+    await FirebaseService().addToCart(product);
+  }
+
+  void _onItemTapped(int index) {
+    if (index == 1) {
+      // Если выбран индекс корзины, переходим на экран корзины
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CartScreen(),
+        ),
+      ).then((_) {
+        // Когда возвращаемся из корзины, устанавливаем индекс на 0 (Главная)
+        setState(() {
+          _selectedIndex = 0;
+        });
+      });
+    } else {
+      setState(() {
+        _selectedIndex = index; // Обновляем индекс при нажатии на другие элементы
+      });
+    }
   }
 
   @override
@@ -23,9 +53,17 @@ class _ProductListScreenState extends State<ProductListScreen> {
         title: Text('Продукты'),
         actions: [
           IconButton(
-            icon: Icon(Icons.add),
+            icon: Icon(Icons.shopping_cart),
             onPressed: () {
-              Navigator.pushNamed(context, '/add-product'); // Переход на экран добавления продукта
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => CartScreen()),
+              ).then((_) {
+                // Когда возвращаемся из корзины, устанавливаем индекс на 0 (Главная)
+                setState(() {
+                  _selectedIndex = 0;
+                });
+              });
             },
           ),
         ],
@@ -43,43 +81,99 @@ class _ProductListScreenState extends State<ProductListScreen> {
 
           final products = snapshot.data!;
 
-          return ListView.builder(
+          return GridView.builder(
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: 2, // Количество колонок
+              childAspectRatio: 0.7, // Соотношение сторон карточки
+              crossAxisSpacing: 10, // Отступ между колонками
+              mainAxisSpacing: 10, // Отступ между строками
+            ),
             itemCount: products.length,
             itemBuilder: (context, index) {
               final product = products[index];
-              final imageUrl = product['image_url']; // Получаем Base64 строку
+              final imageUrl = product['image_url'];
 
               Uint8List? imageBytes;
 
               if (imageUrl != null) {
-                // Пробуем декодировать изображение
                 try {
-                  // Удаляем лишние пробелы и проверяем, является ли строка корректной
                   String cleanedImageUrl = imageUrl.trim();
                   imageBytes = base64Decode(cleanedImageUrl);
                 } catch (e) {
                   print('Ошибка декодирования изображения: $e');
-                  imageBytes = null; // Или вы можете установить значение по умолчанию
+                  imageBytes = null;
                 }
               }
 
-              return ListTile(
-                title: Text(product['name']),
-                subtitle: Text('Описание: ${product['description']}'),
-                trailing: Text('Цена: ${product['price']}'),
-                leading: imageBytes != null
-                    ? Image.memory(
-                  imageBytes,
-                  width: 50,
-                  height: 50,
-                  fit: BoxFit.cover, // Обрезаем изображение по размеру
-                )
-                    : null, // Если изображение отсутствует, не показываем его
+              return GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ProductDetailScreen(product: product),
+                    ),
+                  );
+                },
+                child: Card(
+                  elevation: 4,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      imageBytes != null
+                          ? Image.memory(
+                        imageBytes,
+                        height: 100,
+                        width: double.infinity,
+                        fit: BoxFit.cover,
+                      )
+                          : Container(height: 100, color: Colors.grey),
+                      Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(
+                          product['name'],
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                        child: Text(
+                          'Цена: ${product['price']}',
+                          style: TextStyle(color: Colors.red),
+                        ),
+                      ),
+                      Spacer(),
+                      TextButton(
+                        onPressed: () => _addToCart(product),
+                        child: Text('В корзину'),
+                      ),
+                    ],
+                  ),
+                ),
               );
             },
           );
         },
       ),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Главная',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_cart),
+            label: 'Корзина',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Настройки',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        onTap: _onItemTapped,
+      ),
     );
   }
 }
+

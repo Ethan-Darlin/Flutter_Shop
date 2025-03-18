@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shop/firebase_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shop/screens/addCategoryScreen.dart';
 import 'package:shop/screens/addProductScreen.dart';
 import 'package:shop/screens/productListScreen.dart';
+import 'package:shop/screens/auth_screen.dart'; // Import the AuthScreen
 
 class UserInfoScreen extends StatefulWidget {
   const UserInfoScreen({
@@ -28,6 +30,12 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
     _userDataFuture = FirebaseService().firestore.collection('users').doc(widget.userId).get();
   }
 
+  void _redirectToAuthScreen() {
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (context) => AuthScreen()), // Navigate to AuthScreen
+    );
+  }
 
   void _refreshData() {
     setState(() {
@@ -48,7 +56,11 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
             } else if (snapshot.hasError) {
               return Text('Ошибка: ${snapshot.error}');
             } else if (!snapshot.hasData || !snapshot.data!.exists) {
-              return Text('Данные пользователя не найдены');
+              // Redirect to AuthScreen if user not found
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _redirectToAuthScreen();
+              });
+              return Center(child: Text('Пользователь не найден. Перенаправление на страницу авторизации...'));
             }
 
             // Получаем данные пользователя из Firestore
@@ -77,7 +89,6 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                   onPressed: () {
                     FirebaseService().logOut();
                   },
-
                   child: Text('Выйти'),
                 ),
                 ElevatedButton(
@@ -93,10 +104,19 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => AddProductScreen()),
+                      MaterialPageRoute(builder: (context) => AddProductScreen(creatorId: widget.userId)), // Передаем userId
                     );
                   },
                   child: Text('Добавить продукты'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => AddCategoryScreen()), // Переход к новому экрану
+                    );
+                  },
+                  child: Text('Добавить категорию'),
                 ),
               ],
             );
