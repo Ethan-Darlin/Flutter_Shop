@@ -21,6 +21,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   final TextEditingController _commentController = TextEditingController();
   int _rating = 5;
 
+  @override
+  void initState() {
+    super.initState();
+    _fetchProductDetails(); // Обновляем данные о продукте при загрузке экрана
+  }
+
+  // Метод для получения актуальных данных о продукте
+  Future<void> _fetchProductDetails() async {
+    final productQuery = await FirebaseFirestore.instance
+        .collection('products')
+        .where('product_id', isEqualTo: widget.product['product_id'])
+        .get();
+
+    if (productQuery.docs.isNotEmpty) {
+      final productData = productQuery.docs.first.data() as Map<String, dynamic>;
+      setState(() {
+        widget.product['size_stock'] = productData['size_stock']; // Обновляем остатки
+        _selectedSize = null; // Сброс выбора размера
+        _quantity = 1; // Сбрасываем количество
+      });
+    }
+  }
+
   // Метод для добавления отзыва
   Future<void> _addReview() async {
     final user = FirebaseAuth.instance.currentUser; // Получаем текущего пользователя

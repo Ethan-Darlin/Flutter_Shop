@@ -13,16 +13,39 @@ class _CartScreenState extends State<CartScreen> {
   void initState() {
     super.initState();
     _cartItemsFuture = FirebaseService().getCartItems();
+    print('CartScreen initialized and fetching cart items...');
   }
 
   Future<void> _removeFromCart(String docId) async {
+    print('Trying to remove item with docId: $docId');
+
+    // Получаем информацию о товаре перед его удалением
+    final cartItems = await FirebaseService().getCartItems();
+    final itemToRemove = cartItems.firstWhere((item) => item['docId'] == docId);
+
+    print('Item to remove: ${itemToRemove['name']} - Quantity: ${itemToRemove['quantity']}');
+
+    // Удаляем товар из корзины
     await FirebaseService().removeFromCart(docId);
+    print('Item removed from cart.');
+
+    // Возвращаем количество товара обратно в size_stock
+    await FirebaseService().updateProductStock(
+      itemToRemove['product_id'], // ID товара
+      itemToRemove['selected_size'], // Выбранный размер
+      itemToRemove['quantity'], // Количество, которое нужно вернуть
+    );
+    print('Product stock updated after removing item.');
+
     setState(() {
       _cartItemsFuture = FirebaseService().getCartItems();
     });
+    print('Cart items list updated after removal.');
   }
 
   Future<void> _placeOrder() async {
+    print('Attempting to place order...');
+
     final cartItems = await FirebaseService().getCartItems();
     double totalPrice = cartItems.fold(0.0, (sum, item) {
       var price = item['price'];
@@ -32,14 +55,28 @@ class _CartScreenState extends State<CartScreen> {
       return sum + (price as double) * (item['quantity'] ?? 1);
     });
 
+    print('Total price calculated: $totalPrice');
+
+    // Оформляем заказ
     await FirebaseService().placeOrder(cartItems, totalPrice);
+    print('Order placed successfully.');
+
+    // Удаляем обновление товара из метода _placeOrder(), так как оно уже выполнено внутри placeOrder()
 
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('Заказ оформлен!'),
     ));
 
-    Navigator.pop(context);
+    // Обновляем состояние корзины
+    setState(() {
+      _cartItemsFuture = FirebaseService().getCartItems();
+    });
+
+    print('Cart items list updated after placing order.');
+
+    Navigator.pop(context); // Вернуться на предыдущий экран
   }
+
 
   @override
   Widget build(BuildContext context) {
@@ -67,6 +104,8 @@ class _CartScreenState extends State<CartScreen> {
             return sum + (price as double) * (item['quantity'] ?? 1);
           });
 
+          print('Building cart list with ${cartItems.length} items');
+
           return Column(
             children: [
               Expanded(
@@ -74,7 +113,7 @@ class _CartScreenState extends State<CartScreen> {
                   itemCount: cartItems.length,
                   itemBuilder: (context, index) {
                     final item = cartItems[index];
-                    final docId = item['docId']; // Получаем docId из данных
+                    final docId = item['docId'];
 
                     return ListTile(
                       title: Text(item['name']),
@@ -90,6 +129,7 @@ class _CartScreenState extends State<CartScreen> {
                         icon: Icon(Icons.remove_shopping_cart),
                         onPressed: () {
                           if (docId != null) {
+                            print('Removing item from cart: $docId');
                             _removeFromCart(docId);
                           } else {
                             print('Ошибка: docId равен null');

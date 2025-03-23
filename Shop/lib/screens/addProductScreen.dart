@@ -216,7 +216,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                               child: TextFormField(
                                 decoration: InputDecoration(labelText: 'Размер'),
                                 initialValue: _sizeStock[index]['size']?.toString() ?? '',
-                                keyboardType: TextInputType.number,
+                                keyboardType: TextInputType.text,
                                 onChanged: (value) {
                                   setState(() {
                                     _sizeStock[index]['size'] = value;
