@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shop/firebase_service.dart';
+import 'package:shop/screens/productDetailScreen.dart';
+import 'package:shop/screens/productListScreen.dart'; // Импортируем экран деталей продукта
 
 class CartScreen extends StatefulWidget {
   @override
@@ -8,6 +10,7 @@ class CartScreen extends StatefulWidget {
 
 class _CartScreenState extends State<CartScreen> {
   late Future<List<Map<String, dynamic>>> _cartItemsFuture;
+  int _selectedIndex = 1;
 
   @override
   void initState() {
@@ -61,8 +64,6 @@ class _CartScreenState extends State<CartScreen> {
     await FirebaseService().placeOrder(cartItems, totalPrice);
     print('Order placed successfully.');
 
-    // Удаляем обновление товара из метода _placeOrder(), так как оно уже выполнено внутри placeOrder()
-
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
       content: Text('Заказ оформлен!'),
     ));
@@ -77,6 +78,30 @@ class _CartScreenState extends State<CartScreen> {
     Navigator.pop(context); // Вернуться на предыдущий экран
   }
 
+  void onItemTapped(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+
+    if (index == 0) {
+      // Переход на экран со списком товаров
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ProductListScreen(), // Перейти на экран со списком продуктов
+        ),
+      );
+    } else if (index == 1) {
+      // Переход на экран корзины (возможно, это избыточно, так как вы уже на этом экране)
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CartScreen(),
+        ),
+      );
+    }
+    // Добавьте дополнительные условия для других экранов при необходимости
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -156,6 +181,24 @@ class _CartScreenState extends State<CartScreen> {
             ],
           );
         },
+      ),
+      bottomNavigationBar: BottomNavigationBar(
+        items: const <BottomNavigationBarItem>[
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home),
+            label: 'Главная',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.shopping_cart),
+            label: 'Корзина',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Настройки',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        onTap: onItemTapped,
       ),
     );
   }

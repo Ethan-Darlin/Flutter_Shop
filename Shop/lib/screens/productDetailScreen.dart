@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shop/screens/cartScreen.dart';
+import 'package:shop/screens/productListScreen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -19,15 +21,72 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _quantity = 1;
   final FirebaseService _firebaseService = FirebaseService();
   final TextEditingController _commentController = TextEditingController();
+  final FocusNode _focusNode = FocusNode(); // Создаем FocusNode
   int _rating = 5;
+  double _averageRating = 0.0;
+  bool _hasReviews = false;
+  late Future<List<Map<String, dynamic>>> _similarProductsFuture;
+  int reviewsCount = 0;
 
   @override
   void initState() {
     super.initState();
-    _fetchProductDetails(); // Обновляем данные о продукте при загрузке экрана
+    _fetchProductDetails();
+    _calculateAverageRating().then((result) {
+      setState(() {
+        _averageRating = result['average'];
+        _hasReviews = result['hasReviews'];
+        reviewsCount = result['count'];
+      });
+    });
+    _similarProductsFuture = _fetchSimilarProducts();
+
+    // Добавляем слушатель на изменение фокуса
+    _focusNode.addListener(() {
+      setState(() {});
+    });
   }
 
-  // Метод для получения актуальных данных о продукте
+  Future<List<Map<String, dynamic>>> _fetchSimilarProducts() async {
+    try {
+      QuerySnapshot<Map<String, dynamic>> snapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .where('category', isEqualTo: widget.product['category'])
+          .get();
+
+      List<Map<String, dynamic>> allProducts = snapshot.docs
+          .map((doc) => doc.data())
+          .where((product) => product['product_id'] != widget.product['product_id'])
+          .toList();
+
+      allProducts.shuffle();
+      return allProducts.take(4).toList();
+    } catch (e) {
+      print('Ошибка при загрузке похожих товаров: $e');
+      return [];
+    }
+  }
+
+  Future<void> _addReview() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Вы должны быть авторизованы для добавления отзыва.')),
+      );
+      return;
+    }
+    await FirebaseFirestore.instance.collection('reviews').add({
+      'product_id': widget.product['product_id'],
+      'user_id': user.uid,
+      'rating': _rating,
+      'comment': _commentController.text,
+      'created_at': FieldValue.serverTimestamp(),
+    });
+
+    _commentController.clear();
+    setState(() {});
+  }
+
   Future<void> _fetchProductDetails() async {
     final productQuery = await FirebaseFirestore.instance
         .collection('products')
@@ -37,43 +96,496 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     if (productQuery.docs.isNotEmpty) {
       final productData = productQuery.docs.first.data() as Map<String, dynamic>;
       setState(() {
-        widget.product['size_stock'] = productData['size_stock']; // Обновляем остатки
-        _selectedSize = null; // Сброс выбора размера
-        _quantity = 1; // Сбрасываем количество
+        widget.product['size_stock'] = productData['size_stock'];
+        _selectedSize = null;
+        _quantity = 1;
       });
     }
   }
 
-  // Метод для добавления отзыва
-  Future<void> _addReview() async {
-    final user = FirebaseAuth.instance.currentUser; // Получаем текущего пользователя
-    if (user == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Вы должны быть авторизованы для добавления отзыва.')),
-      );
-      return;
-    }
-
-    // Сохраняем отзыв в Firestore
-    await FirebaseFirestore.instance.collection('reviews').add({
-      'product_id': widget.product['product_id'], // ID продукта
-      'user_id': user.uid, // ID текущего пользователя
-      'rating': _rating, // Рейтинг
-      'comment': _commentController.text, // Текст комментария
-      'created_at': FieldValue.serverTimestamp(), // Время создания
-    });
-
-    // Очистка поля комментария
-    _commentController.clear();
-    setState(() {}); // Обновление экрана
+  String formatPrice(double price) {
+    int rubles = price.toInt();
+    int kopecks = ((price - rubles) * 100).round();
+    return kopecks == 0 ? '$rubles р.' : '$rubles р. $kopecks к.';
   }
 
+  Future<void> _addToCart() async {
+    await _firebaseService.addToCart({
+      ...widget.product,
+      'selected_size': _selectedSize,
+      'quantity': _quantity,
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text('Товар добавлен в корзину'),
+    ));
+  }
+
+  void _showSizeSelectionDialog() {
+    final sizeStock = widget.product['size_stock'] as Map<String, dynamic>? ?? {};
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext context) {
+        return Container(
+          padding: EdgeInsets.all(18),
+          width: double.infinity,
+          color: Color(0xFF18171c),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Выберите размер', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+              SizedBox(height: 8),
+              Divider(color: Colors.grey),
+              SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                alignment: WrapAlignment.center,
+                children: sizeStock.entries.map<Widget>((entry) {
+                  return ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Color(0xFF3E3E3E),
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      _selectedSize = entry.key;
+                      _showQuantityDialog();
+                    },
+                    child: Text(entry.key, style: TextStyle(color: Colors.white)),
+                  );
+                }).toList(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  void _showQuantityDialog() {
+    int quantity = 1;
+    final sizeStock = widget.product['size_stock'] as Map<String, dynamic>? ?? {};
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setState) {
+            return Container(
+              padding: EdgeInsets.all(16),
+              color: Color(0xFF18171c),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('Выберите количество', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.white)),
+                  SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color(0xFF3E3E3E),
+                          shape: CircleBorder(),
+                        ),
+                        onPressed: () {
+                          if (quantity > 1) {
+                            setState(() {
+                              quantity--;
+                            });
+                          }
+                        },
+                        child: Icon(Icons.remove, color: Colors.white),
+                      ),
+                      SizedBox(width: 16),
+                      Text('$quantity', style: TextStyle(fontSize: 24, color: Colors.white)),
+                      SizedBox(width: 16),
+                      ElevatedButton(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color(0xFF3E3E3E),
+                          shape: CircleBorder(),
+                        ),
+                        onPressed: () {
+                          if (quantity < (sizeStock[_selectedSize] ?? 0)) {
+                            setState(() {
+                              quantity++;
+                            });
+                          }
+                        },
+                        child: Icon(Icons.add, color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () {
+                      _addToCart();
+                      Navigator.of(context).pop();
+                    },
+                    child: Text('Добавить в корзину'),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<Map<String, dynamic>> _calculateAverageRating() async {
+    final reviewsSnapshot = await FirebaseFirestore.instance
+        .collection('reviews')
+        .where('product_id', isEqualTo: widget.product['product_id'])
+        .get();
+
+    if (reviewsSnapshot.docs.isEmpty) {
+      return {'average': 0.0, 'hasReviews': false, 'count': 0};
+    }
+
+    double totalRating = 0;
+    int reviewCount = reviewsSnapshot.docs.length;
+
+    for (var doc in reviewsSnapshot.docs) {
+      totalRating += (doc.data() as Map<String, dynamic>)['rating'];
+    }
+
+    double averageRating = totalRating / reviewCount;
+    return {
+      'average': averageRating,
+      'hasReviews': true,
+      'count': reviewCount,
+    };
+  }
+
+  void onItemTapped(int index) {
+    if (index == 0) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ProductListScreen(),
+        ),
+      );
+    } else if (index == 1) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => CartScreen(),
+        ),
+      );
+    }
+  }
+
+  void _showReviewsBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Color(0xFF18171c),
+      builder: (BuildContext context) {
+        return Container(
+          padding: EdgeInsets.all(30),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                'Отзывы:',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+              ),
+              SizedBox(height: 8),
+              Container(
+                height: 2,
+                color: Colors.white,
+                width: double.infinity,
+              ),
+              SizedBox(height: 8),
+              SizedBox(
+                height: 600,
+                child: StreamBuilder<QuerySnapshot>(
+                  stream: FirebaseFirestore.instance
+                      .collection('reviews')
+                      .where('product_id', isEqualTo: widget.product['product_id'])
+                      .orderBy('created_at', descending: true)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
+                      return Center(child: CircularProgressIndicator());
+                    }
+                    if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                      return Center(child: Text('Отзывов пока нет.', style: TextStyle(color: Colors.white)));
+                    }
+
+                    final reviews = snapshot.data!.docs;
+
+                    return ListView.builder(
+                      shrinkWrap: true,
+                      physics: AlwaysScrollableScrollPhysics(),
+                      itemCount: reviews.length,
+                      itemBuilder: (context, index) {
+                        final review = reviews[index].data() as Map<String, dynamic>;
+                        final userId = review['user_id'];
+
+                        return FutureBuilder<DocumentSnapshot>(
+                          future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
+                          builder: (context, userSnapshot) {
+                            if (userSnapshot.connectionState == ConnectionState.waiting) {
+                              return ListTile(
+                                title: Text('Загрузка...', style: TextStyle(color: Colors.white)),
+                              );
+                            }
+                            if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
+                              return ListTile(
+                                title: Text('Пользователь не найден', style: TextStyle(color: Colors.white)),
+                              );
+                            }
+
+                            final userData = userSnapshot.data!.data() as Map<String, dynamic>;
+                            final username = userData['username'] ?? 'Неизвестный';
+
+                            return Card(
+                              margin: EdgeInsets.symmetric(vertical: 8),
+                              color: Color(0xFF3E3E3E),
+                              child: ListTile(
+                                title: Text('Рейтинг: ${review['rating']}', style: TextStyle(color: Colors.white)),
+                                subtitle: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text('$username: ${review['comment'] ?? 'Комментарий отсутствует'}', style: TextStyle(color: Colors.white)),
+                                    SizedBox(height: 4),
+                                    Text(
+                                      review['created_at'] != null
+                                          ? (review['created_at'] as Timestamp).toDate().toString()
+                                          : '',
+                                      style: TextStyle(fontSize: 12, color: Colors.grey),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSimilarProductsSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+          child: Text(
+            'Похожие товары',
+            style: TextStyle(
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        FutureBuilder<List<Map<String, dynamic>>>(
+          future: _similarProductsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return Center(child: CircularProgressIndicator());
+            } else if (snapshot.hasError) {
+              return Center(child: Text('Ошибка загрузки похожих товаров', style: TextStyle(color: Colors.white)));
+            } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+              return SizedBox.shrink();
+            }
+
+            final similarProducts = snapshot.data!;
+
+            return Container(
+              height: 320,
+              child: ListView.builder(
+                scrollDirection: Axis.horizontal,
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                itemCount: similarProducts.length,
+                itemBuilder: (context, index) {
+                  final product = similarProducts[index];
+                  final imageUrl = product['image_url'];
+                  Uint8List? imageBytes;
+
+                  if (imageUrl != null) {
+                    try {
+                      String cleanedImageUrl = imageUrl.trim();
+                      imageBytes = base64Decode(cleanedImageUrl);
+                    } catch (e) {
+                      print('Ошибка декодирования изображения: $e');
+                      imageBytes = null;
+                    }
+                  }
+
+                  return Container(
+                    width: 180,
+                    margin: EdgeInsets.only(right: 0.0),
+                    child: Card(
+                      elevation: 2,
+                      color: Color(0xFF18171c),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.pushReplacement(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => ProductDetailScreen(product: product),
+                                ),
+                              );
+                            },
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                              child: imageBytes != null
+                                  ? Image.memory(
+                                imageBytes,
+                                height: 180,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
+                              )
+                                  : Container(
+                                height: 150,
+                                width: double.infinity,
+                                color: Colors.grey,
+                              ),
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(8.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  product['name'],
+                                  style: TextStyle(color: Colors.white),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                SizedBox(height: 4),
+                                Text(
+                                  formatPrice(product['price']),
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+                            child: SizedBox(
+                              width: double.infinity,
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  Navigator.pushReplacement(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ProductDetailScreen(product: product),
+                                    ),
+                                  );
+                                },
+                                child: Text(
+                                  'Перейти',
+                                  style: TextStyle(
+                                    color: Colors.white, // Устанавливаем цвет текста белым
+                                    fontSize: 14, // Устанавливаем размер текста
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Color(0xFFEE3A57),
+                                  padding: EdgeInsets.symmetric(vertical: 8),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            );
+          },
+        ),
+      ],
+    );
+  }
+
+  void _showFullScreenImage(Uint8List imageBytes) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final screenSize = MediaQuery.of(context).size;
+
+        return Dialog(
+          backgroundColor: Colors.black,
+          child: Container(
+            height: screenSize.height * 0.5,
+            width: screenSize.width * 0.8,
+            child: Stack(
+              children: [
+                Center(
+                  child: FittedBox(
+                    fit: BoxFit.cover,
+                    child: Image.memory(imageBytes),
+                  ),
+                ),
+                Positioned(
+                  left: 240,
+                  bottom: 330,
+                  child: Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withOpacity(0.8),
+                    ),
+                    child: IconButton(
+                      icon: Icon(Icons.close, color: Colors.black),
+                      onPressed: () {
+                        Navigator.of(context).pop();
+                      },
+                      hoverColor: Colors.transparent,
+                      splashColor: Colors.red.withOpacity(0.5),
+                      highlightColor: Colors.transparent,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  String getReviewsText(int count) {
+    if (count % 10 == 1 && count % 100 != 11) {
+      return '$count оценка';
+    } else if ((count % 10 >= 2 && count % 10 <= 4) && (count % 100 < 10 || count % 100 >= 20)) {
+      return '$count оценки';
+    } else {
+      return '$count оценок';
+    }
+  }
   @override
   Widget build(BuildContext context) {
     final imageUrl = widget.product['image_url'];
     Uint8List? imageBytes;
 
-    // Декодирование изображения из base64
     if (imageUrl != null) {
       try {
         String cleanedImageUrl = imageUrl.trim();
@@ -85,226 +597,279 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.product['name']),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Отображение изображения товара
-            if (imageBytes != null)
-              Image.memory(
-                imageBytes,
-                height: 200,
-                width: double.infinity,
-                fit: BoxFit.cover,
-              ),
-            SizedBox(height: 16),
-
-            // Название товара
-            Text(
-              widget.product['name'],
-              style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-
-            // Цена товара
-            Text(
-              'Цена: ${widget.product['price']}',
-              style: TextStyle(fontSize: 18, color: Colors.red),
-            ),
-            SizedBox(height: 16),
-
-            // Описание товара
-            Text(
-              'Описание:',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text(
-              widget.product['description'],
-              style: TextStyle(fontSize: 16),
-            ),
-            SizedBox(height: 16),
-
-            // Размеры и остатки
-            Text(
-              'Размеры и остатки:',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            DropdownButton<String>(
-              value: _selectedSize,
-              hint: Text('Выберите размер'),
-              onChanged: (String? newValue) {
-                setState(() {
-                  _selectedSize = newValue;
-                });
-              },
-              items: widget.product['size_stock'].entries.map<DropdownMenuItem<String>>((entry) {
-                return DropdownMenuItem<String>(
-                  value: entry.key,
-                  child: Text('Размер: ${entry.key}, Остаток: ${entry.value}'),
-                );
-              }).toList(),
-            ),
-            SizedBox(height: 16),
-
-            // Количество
-            Text(
-              'Количество:',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Row(
+      backgroundColor: Colors.black,
+      resizeToAvoidBottomInset: false, // Убираем автоматическое изменение размера при появлении клавиатуры
+      body: Stack(
+        children: [
+          SingleChildScrollView(
+            padding: const EdgeInsets.symmetric(horizontal: 0, vertical: 23),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                IconButton(
-                  icon: Icon(Icons.remove),
-                  onPressed: () {
-                    if (_quantity > 1) {
-                      setState(() {
-                        _quantity--;
-                      });
-                    }
-                  },
+                if (imageBytes != null)
+                  GestureDetector(
+                    onTap: () => _showFullScreenImage(imageBytes!),
+                    child: Container(
+                      width: double.infinity,
+                      decoration: BoxDecoration(
+                        color: Color(0xFF18171c),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            width: double.infinity,
+                            child: Image.memory(
+                              imageBytes,
+                              height: 400,
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                          SizedBox(height: 8),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 10.0, bottom: 10),
+                            child: Text(
+                              '${formatPrice(widget.product['price'])}',
+                              style: TextStyle(fontSize: 18, color: Colors.white),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.product['name'],
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        widget.product['description'],
+                        style: TextStyle(fontSize: 16, color: Colors.white),
+                      ),
+                    ],
+                  ),
                 ),
-                Text('$_quantity'),
-                IconButton(
-                  icon: Icon(Icons.add),
-                  onPressed: () {
-                    if (_selectedSize != null && _quantity < (widget.product['size_stock'][_selectedSize] ?? 0)) {
-                      setState(() {
-                        _quantity++;
-                      });
-                    }
-                  },
+                SizedBox(height: 16),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 5.0),
+                  child: GestureDetector(
+                    onTap: _showReviewsBottomSheet,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Color(0xFF3E3E3E),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            padding: EdgeInsets.all(3),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Image.asset(
+                                          'assets/images/star.png',
+                                          width: 24,
+                                          height: 24,
+                                        ),
+                                        SizedBox(width: 8),
+                                        Text(
+                                          '${_averageRating.toStringAsFixed(1)}',
+                                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: 8),
+                                    _hasReviews
+                                        ? Text(
+                                      getReviewsText(reviewsCount),
+                                      style: TextStyle(fontSize: 14, color: Colors.white),
+                                    )
+                                        : Text(
+                                      '0 отзывов!',
+                                      style: TextStyle(fontSize: 14, color: Colors.white),
+                                    ),
+                                  ],
+                                ),
+                                IconButton(
+                                  onPressed: () {},
+                                  icon: Icon(Icons.arrow_forward, color: Colors.white),
+                                  padding: EdgeInsets.zero,
+                                  constraints: BoxConstraints(),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 16),
+                        Container(
+                          width: 2,
+                          color: Colors.white,
+                          height: 60,
+                        ),
+                        SizedBox(width: 16),
+                        Expanded(
+                          flex: 4,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Color(0xFF3E3E3E),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            alignment: Alignment.center,
+                            padding: EdgeInsets.all(7),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  'Поделитесь опытом использования!',
+                                  style: TextStyle(fontSize: 17, color: Colors.white),
+                                  textAlign: TextAlign.center,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                SizedBox(height: 16),
+
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        'Добавить отзыв',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                      ),
+                      SizedBox(height: 8),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(5, (index) {
+                          return GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _rating = index + 1;
+                              });
+                            },
+                            child: Icon(
+                              index < _rating ? Icons.star : Icons.star_border,
+                              color: Colors.yellow,
+                              size: 32,
+                            ),
+                          );
+                        }),
+                      ),
+                      SizedBox(height: 16),
+                      TextField(
+                        controller: _commentController,
+                        focusNode: _focusNode, // Привязываем FocusNode к полю ввода
+                        decoration: InputDecoration(
+                          labelText: _focusNode.hasFocus ? '' : 'Ваш комментарий', // Скрываем текст при фокусе
+                          labelStyle: TextStyle(color: Colors.black),
+                          border: OutlineInputBorder(),
+                          filled: true,
+                          fillColor: Colors.white,
+                          contentPadding: EdgeInsets.all(10),
+                        ),
+                        maxLines: 3,
+                      ),
+                      SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _addReview,
+                        child: Text(
+                          'Добавить отзыв',
+                          style: TextStyle(
+                            color: Colors.white, // Устанавливаем цвет текста белым
+                            fontSize: 18, // Устанавливаем размер текста
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(backgroundColor: Color(0xFFEE3A57)),
+                      ),
+                    ],
+                  ),
+                ),
+
+                _buildSimilarProductsSection(),
+
+                SizedBox(height: 100),
+              ],
+            ),
+          ),
+          Positioned(
+            bottom: 0.0,
+            left: 0,
+            right: 0,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  color: Color(0xFF18171c),
+                  padding: EdgeInsets.symmetric(vertical: 8.0),
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16.0),
+                    child: SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton(
+                        onPressed: _showSizeSelectionDialog,
+                        child: Text(
+                          'В корзину',
+                          style: TextStyle(
+                            color: Colors.white, // Устанавливаем цвет текста белым
+                            fontSize: 18, // Устанавливаем размер текста
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Color(0xFFEE3A57),
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+                BottomNavigationBar(
+                  backgroundColor: Color(0xFF18171c),
+                  items: const <BottomNavigationBarItem>[
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.home),
+                      label: 'Главная',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.shopping_cart),
+                      label: 'Корзина',
+                    ),
+                    BottomNavigationBarItem(
+                      icon: Icon(Icons.settings),
+                      label: 'Настройки',
+                    ),
+                  ],
+                  currentIndex: 0,
+                  selectedItemColor: Colors.white,
+                  unselectedItemColor: Colors.white,
+                  onTap: onItemTapped,
                 ),
               ],
             ),
-            SizedBox(height: 16),
-
-            // Кнопка для добавления в корзину
-            ElevatedButton(
-              onPressed: _selectedSize != null ? () async {
-                await _firebaseService.addToCart({
-                  ...widget.product,
-                  'selected_size': _selectedSize,
-                  'quantity': _quantity,
-                });
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                  content: Text('Товар добавлен в корзину'),
-                ));
-              } : null,
-              child: Text('Добавить в корзину'),
-            ),
-
-            SizedBox(height: 16),
-
-            // Заголовок для отзывов
-            Text(
-              'Отзывы:',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-
-            // Контейнер для отзывов с фиксированной высотой
-            SizedBox(
-              height: 200, // Укажите подходящую высоту
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('reviews')
-                    .where('product_id', isEqualTo: widget.product['product_id']) // Фильтрация по ID продукта
-                    .orderBy('created_at', descending: true) // Сортировка по времени
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Center(child: CircularProgressIndicator());
-                  }
-                  if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                    print('No reviews found for product ID: ${widget.product['product_id']}');
-                    return Center(child: Text('Отзывов пока нет.'));
-                  }
-
-                  final reviews = snapshot.data!.docs;
-                  print('Reviews found: ${reviews.length}');
-
-                  return ListView.builder(
-                    shrinkWrap: true,
-                    physics: AlwaysScrollableScrollPhysics(),
-                    itemCount: reviews.length,
-                    itemBuilder: (context, index) {
-                      final review = reviews[index].data() as Map<String, dynamic>;
-                      print('Review: $review');
-                      return Card(
-                        margin: EdgeInsets.symmetric(vertical: 8),
-                        child: ListTile(
-                          title: Text('Рейтинг: ${review['rating']}'),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(review['comment']),
-                              SizedBox(height: 4),
-                              Text(
-                                review['created_at'] != null
-                                    ? (review['created_at'] as Timestamp).toDate().toString()
-                                    : '',
-                                style: TextStyle(fontSize: 12, color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-            ),
-
-            SizedBox(height: 16),
-
-            // Заголовок для добавления отзыва
-            Text(
-              'Добавить отзыв:',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-
-            // Выбор рейтинга
-            DropdownButton<int>(
-              value: _rating,
-              onChanged: (value) {
-                setState(() {
-                  _rating = value!;
-                });
-              },
-              items: List.generate(5, (index) => index + 1)
-                  .map((value) => DropdownMenuItem<int>(
-                value: value,
-                child: Text('$value звезда${value > 1 ? 'ы' : ''}'),
-              ))
-                  .toList(),
-            ),
-
-            // Поле для комментария
-            TextField(
-              controller: _commentController,
-              decoration: InputDecoration(
-                labelText: 'Ваш комментарий',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-            SizedBox(height: 16),
-
-            // Кнопка для добавления отзыва
-            ElevatedButton(
-              onPressed: _addReview,
-              child: Text('Добавить отзыв'),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

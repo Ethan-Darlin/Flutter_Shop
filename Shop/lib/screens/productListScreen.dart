@@ -201,10 +201,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
                     fillColor: Color.fromRGBO(50, 37, 67, 1),
                     filled: true,
                     enabledBorder: OutlineInputBorder(
+                      borderSide: BorderSide(color: Colors.transparent), // Убираем цвет границы
                       borderRadius: BorderRadius.circular(30),
                     ),
                     focusedBorder: OutlineInputBorder(
-                      borderSide: BorderSide(color: Colors.blue),
+                      borderSide: BorderSide(color: Colors.transparent), // Убираем цвет границы
                       borderRadius: BorderRadius.circular(30),
                     ),
                     prefixIcon: Icon(
