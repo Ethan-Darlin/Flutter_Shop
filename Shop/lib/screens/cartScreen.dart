@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shop/firebase_service.dart';
 import 'package:shop/screens/productDetailScreen.dart';
-import 'package:shop/screens/productListScreen.dart'; // Импортируем экран деталей продукта
+import 'package:shop/screens/productListScreen.dart';
+import 'package:shop/screens/profileScreen.dart'; // Импортируем экран деталей продукта
 
 class CartScreen extends StatefulWidget {
   @override
@@ -193,12 +194,26 @@ class _CartScreenState extends State<CartScreen> {
             label: 'Корзина',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Настройки',
+            icon: Icon(Icons.person),
+            label: 'Профиль',
           ),
         ],
         currentIndex: _selectedIndex,
-        onTap: onItemTapped,
+
+        unselectedItemColor: Colors.white, // Цвет для невыбранных элементов
+        backgroundColor: Color(0xFF18171c), // Цвет фона
+        onTap: (index) {
+          if (index == 2) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ProfileScreen(), // Переход на экран профиля
+              ),
+            );
+          } else {
+            onItemTapped(index);
+          }
+        },
       ),
     );
   }

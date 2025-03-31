@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shop/screens/cartScreen.dart';
 import 'package:shop/screens/productListScreen.dart';
+import 'package:shop/screens/profileScreen.dart';
 
 class ProductDetailScreen extends StatefulWidget {
   final Map<String, dynamic> product;
@@ -21,12 +22,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   int _quantity = 1;
   final FirebaseService _firebaseService = FirebaseService();
   final TextEditingController _commentController = TextEditingController();
+  Future<List<Map<String, dynamic>>>? similarProductsFuture;
   final FocusNode _focusNode = FocusNode(); // Создаем FocusNode
   int _rating = 5;
   double _averageRating = 0.0;
   bool _hasReviews = false;
   late Future<List<Map<String, dynamic>>> _similarProductsFuture;
   int reviewsCount = 0;
+  int _selectedIndex = 0;
 
   @override
   void initState() {
@@ -37,6 +40,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         _averageRating = result['average'];
         _hasReviews = result['hasReviews'];
         reviewsCount = result['count'];
+
       });
     });
     _similarProductsFuture = _fetchSimilarProducts();
@@ -391,14 +395,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           ),
         ),
         FutureBuilder<List<Map<String, dynamic>>>(
-          future: _similarProductsFuture,
+          future: similarProductsFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return Center(child: CircularProgressIndicator());
             } else if (snapshot.hasError) {
               return Center(child: Text('Ошибка загрузки похожих товаров', style: TextStyle(color: Colors.white)));
             } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return SizedBox.shrink();
+              return Center(child: Text('Нет похожих товаров.', style: TextStyle(color: Colors.white)));
             }
 
             final similarProducts = snapshot.data!;
@@ -426,7 +430,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
                   return Container(
                     width: 180,
-                    margin: EdgeInsets.only(right: 0.0),
+                    margin: EdgeInsets.only(right: 8.0),
                     child: Card(
                       elevation: 2,
                       color: Color(0xFF18171c),
@@ -438,7 +442,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         children: [
                           GestureDetector(
                             onTap: () {
-                              Navigator.pushReplacement(
+                              Navigator.push(
                                 context,
                                 MaterialPageRoute(
                                   builder: (context) => ProductDetailScreen(product: product),
@@ -489,7 +493,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                               width: double.infinity,
                               child: ElevatedButton(
                                 onPressed: () {
-                                  Navigator.pushReplacement(
+                                  Navigator.push(
                                     context,
                                     MaterialPageRoute(
                                       builder: (context) => ProductDetailScreen(product: product),
@@ -499,8 +503,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                 child: Text(
                                   'Перейти',
                                   style: TextStyle(
-                                    color: Colors.white, // Устанавливаем цвет текста белым
-                                    fontSize: 14, // Устанавливаем размер текста
+                                    color: Colors.white,
+                                    fontSize: 14,
                                   ),
                                 ),
                                 style: ElevatedButton.styleFrom(
@@ -857,14 +861,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                       label: 'Корзина',
                     ),
                     BottomNavigationBarItem(
-                      icon: Icon(Icons.settings),
-                      label: 'Настройки',
+                      icon: Icon(Icons.person), // Заменили иконку на "профиль"
+                      label: 'Профиль', // Изменили текст на "Профиль"
                     ),
                   ],
-                  currentIndex: 0,
+                  currentIndex: _selectedIndex,
                   selectedItemColor: Colors.white,
                   unselectedItemColor: Colors.white,
-                  onTap: onItemTapped,
+                  onTap: (index) {
+                    if (index == 2) {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => ProfileScreen(), // Переход на экран профиля
+                        ),
+                      );
+                    } else {
+                      onItemTapped(index); // Обработка других пунктов меню
+                    }
+                  },
                 ),
               ],
             ),

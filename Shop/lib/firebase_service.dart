@@ -244,9 +244,26 @@ import 'package:flutter/cupertino.dart';
         print('Ошибка: товар с ID $productId не найден');
       }
     }
+    Future<List<Map<String, dynamic>>> getUserOrders() async {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null) {
+        QuerySnapshot ordersSnapshot = await firestore
+            .collection('orders')
+            .where('user_id', isEqualTo: userId)
+            .get();
 
+        return ordersSnapshot.docs.map((doc) {
+          return {
+            'order_id': doc.id,
+            ...doc.data() as Map<String, dynamic>,
+          };
+        }).toList();
+      }
+      return [];
+    }
     Future<void> placeOrder(List<Map<String, dynamic>> cartItems, double totalPrice) async {
       final userId = FirebaseAuth.instance.currentUser?.uid;
+
       if (userId != null) {
         // Создание заказа в таблице Orders
         DocumentReference orderRef = await firestore.collection('orders').add({
@@ -259,7 +276,7 @@ import 'package:flutter/cupertino.dart';
         // Добавление товаров в таблицу Order_Items
         for (var item in cartItems) {
           await firestore.collection('order_items').add({
-            'order_id': orderRef.id,
+            'order_id': orderRef.id,  // Сохраняем идентификатор заказа
             'product_id': item['product_id'],
             'name': item['name'],
             'price': item['price'],
@@ -269,9 +286,9 @@ import 'package:flutter/cupertino.dart';
 
           // Обновление количества товара в Firestore
           await updateProductStock(
-            item['product_id'] as int, // Передаем как int
+            item['product_id'] as int,
             item['selected_size'],
-            -item['quantity'], // Уменьшаем количество на количество, которое заказываем
+            -item['quantity'],
           );
         }
 
@@ -280,7 +297,43 @@ import 'package:flutter/cupertino.dart';
       }
     }
 
+    Future<void> changePassword({required String currentPassword, required String newPassword}) async {
+      User? user = auth.currentUser;
 
+      if (user != null) {
+        // Получаем текущий идентификатор токена
+        AuthCredential credential = EmailAuthProvider.credential(
+          email: user.email!,
+          password: currentPassword,
+        );
+
+        try {
+          // Перепроверяем текущий пароль
+          await user.reauthenticateWithCredential(credential);
+          // Смена пароля
+          await user.updatePassword(newPassword);
+          print('Пароль успешно изменен');
+        } on FirebaseAuthException catch (e) {
+          if (e.code == 'wrong-password') {
+            print('Неверный текущий пароль');
+          } else {
+            print('Ошибка: ${e.message}');
+          }
+        }
+      }
+    }
+    Future<void> resetPassword(String email) async {
+      try {
+        await auth.sendPasswordResetEmail(email: email);
+        print('Письмо для сброса пароля отправлено на $email');
+      } on FirebaseAuthException catch (e) {
+        if (e.code == 'user-not-found') {
+          print('Пользователь с этим адресом электронной почты не найден.');
+        } else {
+          print('Ошибка: ${e.message}');
+        }
+      }
+    }
     Future<void> clearCart() async {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId != null) {
@@ -296,5 +349,39 @@ import 'package:flutter/cupertino.dart';
       }
     }
     //отзывы
+    Future<void> addRecentlyViewedProduct(String productId) async {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId == null) return;
 
+      final docRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('recently_viewed')
+          .doc(productId);
+
+      await docRef.set({
+        'product_id': productId,
+        'viewed_at': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    }
+
+    Future<List<Map<String, dynamic>>> getRecentlyViewedProducts() async {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null) {
+        QuerySnapshot snapshot = await firestore
+            .collection('users')
+            .doc(userId)
+            .collection('recently_viewed')
+            .orderBy('viewed_at', descending: true)
+            .get();
+
+        return snapshot.docs.map((doc) {
+          return {
+            'doc_id': doc.id,
+            ...doc.data() as Map<String, dynamic>,
+          };
+        }).toList();
+      }
+      return [];
+    }
   }

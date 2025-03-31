@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shop/firebase_service.dart';
 import 'package:shop/screens/cartScreen.dart';
+import 'package:shop/screens/profileScreen.dart'; // Импортируйте экран профиля
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:shop/screens/productDetailScreen.dart';
@@ -27,6 +28,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
       SnackBar(content: Text('Товар добавлен в корзину')),
     );
   }
+
   String formatPrice(double price) {
     int rubles = price.toInt();
     int kopecks = ((price - rubles) * 100).round(); // Получаем копейки
@@ -37,6 +39,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
       return '$rubles р. $kopecks к.'; // Иначе выводим рубли и копейки
     }
   }
+
   void onItemTapped(int index) {
     if (index == 1) {
       Navigator.push(
@@ -49,12 +52,20 @@ class _ProductListScreenState extends State<ProductListScreen> {
           _selectedIndex = 0;
         });
       });
+    } else if (index == 2) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ProfileScreen(), // Переход на экран профиля
+        ),
+      );
     } else {
       setState(() {
         _selectedIndex = index;
       });
     }
   }
+
   void _showSizeSelectionDialog(Map<String, dynamic> product) {
     final sizeStock = product['size_stock'] as Map<String, dynamic>? ?? {};
 
@@ -99,6 +110,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
       },
     );
   }
+
   void _showQuantityDialog(Map<String, dynamic> product, String selectedSize) {
     int quantity = 1;
     final sizeStock = product['size_stock'] as Map<String, dynamic>? ?? {};
@@ -181,13 +193,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
     );
   }
 
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Color(0xFF18171c),
-     // backgroundColor: Colors.white,
-      body: SingleChildScrollView( // Обернули в SingleChildScrollView
+      body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.only(top: 70.0),
           child: Column(
@@ -384,12 +394,15 @@ class _ProductListScreenState extends State<ProductListScreen> {
             label: 'Корзина',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: 'Настройки',
+            icon: Icon(Icons.person), // Заменили иконку на "профиль"
+            label: 'Профиль', // Изменили текст на "Профиль"
           ),
         ],
         currentIndex: _selectedIndex,
         onTap: onItemTapped,
+        backgroundColor: Color(0xFF18171c),
+        unselectedItemColor: Colors.white, // Цвет для невыбранных элементов
+        unselectedIconTheme: IconThemeData(color: Colors.white), // Цвет невыбранных иконок
       ),
     );
   }

@@ -44,6 +44,7 @@ dependencies:
   shared_preferences: ^2.5.2
   google_sign_in: ^6.3.0
   flutter_svg: ^2.0.17
+  qr_flutter: ^4.1.0
 
 
 dev_dependencies:
