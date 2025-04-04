@@ -16,7 +16,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? userData;
-  Future<List<Map<String, dynamic>>>? ordersFuture;
+  Future<List<Map<String, dynamic>>>? orderItemsFuture; // Declare orderItemsFuture
   Future<List<Map<String, dynamic>>>? similarProductsFuture; // Future for similar products
   int _selectedIndex = 0; // Index of the selected navigation item
 
@@ -24,7 +24,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _fetchUserData();
-    _fetchUserOrders();
+    _fetchUserOrderItems(); // Fetch user order items on init
     _fetchSimilarProducts(); // Fetch similar products on init
   }
 
@@ -33,20 +33,76 @@ class _ProfileScreenState extends State<ProfileScreen> {
     setState(() {});
   }
 
-  Future<void> _fetchUserOrders() async {
+  Future<void> _fetchUserOrderItems() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
+
     if (userId != null) {
-      ordersFuture = FirebaseFirestore.instance
-          .collection('orders')
-          .where('user_id', isEqualTo: userId)
-          .get()
-          .then((snapshot) {
-        return snapshot.docs.map((doc) {
-          return {
-            'order_id': doc.id, // Save order ID
+      try {
+        // Получаем заказы пользователя
+        final ordersSnapshot = await FirebaseFirestore.instance
+            .collection('orders')
+            .where('user_id', isEqualTo: userId)
+            .get();
+
+        if (ordersSnapshot.docs.isEmpty) {
+          print('No orders found for user: $userId');
+          setState(() {
+            orderItemsFuture = Future.value([]); // Устанавливаем пустой результат
+          });
+          return;
+        }
+
+        // Собираем все order_id из заказов
+        final orderIds = ordersSnapshot.docs.map((doc) => doc.id).toList();
+
+        // Получаем связанные товары из коллекции order_items
+        final orderItemsSnapshot = await FirebaseFirestore.instance
+            .collection('order_items')
+            .where('order_id', whereIn: orderIds)
+            .get();
+
+        if (orderItemsSnapshot.docs.isEmpty) {
+          print('No order items found for user: $userId');
+          setState(() {
+            orderItemsFuture = Future.value([]); // Устанавливаем пустой результат
+          });
+          return;
+        }
+
+        // Группируем товары по order_id
+        final groupedItems = <String, List<Map<String, dynamic>>>{};
+
+        for (var doc in orderItemsSnapshot.docs) {
+          final data = {
+            'order_item_id': doc.id,
             ...doc.data() as Map<String, dynamic>,
           };
-        }).toList();
+          final orderId = data['order_id'] as String;
+
+          if (!groupedItems.containsKey(orderId)) {
+            groupedItems[orderId] = [];
+          }
+          groupedItems[orderId]!.add(data);
+        }
+
+        // Преобразуем в список Map для FutureBuilder
+        final groupedItemList = groupedItems.entries
+            .map((entry) => {'order_id': entry.key, 'items': entry.value})
+            .toList();
+
+        setState(() {
+          orderItemsFuture = Future.value(groupedItemList);
+        });
+      } catch (e) {
+        print('Error fetching order items: $e');
+        setState(() {
+          orderItemsFuture = Future.error(e);
+        });
+      }
+    } else {
+      print('User is not authenticated.');
+      setState(() {
+        orderItemsFuture = Future.value([]);
       });
     }
   }
@@ -56,7 +112,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         .collection('products')
         .get()
         .then((snapshot) {
-      // Получаем все товары
       final allProducts = snapshot.docs.map((doc) {
         return {
           'product_id': doc.id,
@@ -64,25 +119,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
         };
       }).toList();
 
-      // Перемешиваем товары
-      allProducts.shuffle();
-
-      // Возвращаем, например, первые 10 товаров
-      return allProducts.take(10).toList();
+      allProducts.shuffle(); // Shuffle products
+      return allProducts.take(10).toList(); // Return first 10 products
     });
 
-    setState(() {}); // Обновляем состояние
+    setState(() {}); // Update state after fetching similar products
   }
 
-  void _showQrDialog(String orderId) {
+  void _showQrDialog(String orderItemId) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          title: Text('QR-код для заказа №$orderId'),
+          title: Text('QR-код для товара'),
           content: SingleChildScrollView(
             child: QrImageView(
-              data: orderId,
+              data: orderItemId,
               version: QrVersions.auto,
               size: 200.0, // Size of QR code
               gapless: false,
@@ -193,15 +245,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  void _navigateToProductDetail(Map<String, dynamic> product) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => ProductDetailScreen(product: product), // Navigate to product detail
-      ),
-    );
-  }
-
   void onItemTapped(int index) {
     if (index == 0) {
       Navigator.pushReplacement(
@@ -218,9 +261,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ),
       );
     }
-    // Update the selected index
     setState(() {
-      _selectedIndex = index;
+      _selectedIndex = index; // Update selected index
     });
   }
 
@@ -355,7 +397,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: Text('Личный кабинет')),
-      body: SingleChildScrollView( // Wrap the entire body in SingleChildScrollView
+      body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
@@ -367,6 +409,110 @@ class _ProfileScreenState extends State<ProfileScreen> {
               if (userData != null)
                 Text('Email: ${userData!['email']}', style: TextStyle(fontSize: 20)),
               SizedBox(height: 20),
+              Text('Ваши товары:', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+              SizedBox(height: 10),
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: orderItemsFuture,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return Center(child: CircularProgressIndicator());
+                  } else if (snapshot.hasError) {
+                    return Center(child: Text('Ошибка: ${snapshot.error}'));
+                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                    return Center(child: Text('У вас нет товаров.'));
+                  }
+
+                  final groupedOrders = snapshot.data!;
+
+                  return Container(
+                    height: 600, // Ограничиваем высоту блока
+                    decoration: BoxDecoration(
+                      color: Colors.blueGrey[900], // Фон для всего блока
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Scrollbar( // Добавляем полоску прокрутки
+                      thumbVisibility: true,
+                      child: ListView.builder(
+                        padding: EdgeInsets.all(8.0),
+                        itemCount: groupedOrders.length,
+                        itemBuilder: (context, index) {
+                          final order = groupedOrders[index];
+                          final orderId = order['order_id'];
+                          final items = order['items'] as List<Map<String, dynamic>>;
+
+                          return Card(
+                            color: Colors.blueGrey[800], // Общий фон для одного заказа
+                            margin: EdgeInsets.symmetric(vertical: 8.0),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Padding(
+                              padding: const EdgeInsets.all(16.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Заказ ID: $orderId',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  SizedBox(height: 10),
+                                  ListView.builder(
+                                    shrinkWrap: true,
+                                    physics: NeverScrollableScrollPhysics(), // Отключаем прокрутку внутри заказа
+                                    itemCount: items.length,
+                                    itemBuilder: (context, itemIndex) {
+                                      final item = items[itemIndex];
+                                      return Container(
+                                        margin: EdgeInsets.only(bottom: 8.0),
+                                        child: ListTile(
+                                          tileColor: Colors.blueGrey[700],
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          title: Text(
+                                            item['name'],
+                                            style: TextStyle(color: Colors.white),
+                                          ),
+                                          subtitle: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                'Цена: ${item['price']}',
+                                                style: TextStyle(color: Colors.white70),
+                                              ),
+                                              Text(
+                                                'Количество: ${item['quantity']}',
+                                                style: TextStyle(color: Colors.white70),
+                                              ),
+                                              Text(
+                                                'Статус: ${item['item_status']}',
+                                                style: TextStyle(color: Colors.white70),
+                                              ),
+                                            ],
+                                          ),
+                                          trailing: IconButton(
+                                            icon: Icon(Icons.qr_code, color: Colors.white),
+                                            onPressed: () => _showQrDialog(item['order_item_id']),
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                },
+              ),
+              SizedBox(height: 20),
               ElevatedButton(
                 onPressed: _showChangePasswordDialog,
                 child: Text('Сменить пароль'),
@@ -375,42 +521,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 onPressed: _showResetPasswordDialog,
                 child: Text('Сбросить пароль'),
               ),
-              SizedBox(height: 20),
-              Text('Ваши заказы:', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              SizedBox(height: 10),
-              FutureBuilder<List<Map<String, dynamic>>>(
-                future: ordersFuture,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState == ConnectionState.waiting) {
-                    return Center(child: CircularProgressIndicator());
-                  } else if (snapshot.hasError) {
-                    return Center(child: Text('Ошибка: ${snapshot.error}'));
-                  } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-                    return Center(child: Text('У вас нет заказов.'));
-                  }
-                  final orders = snapshot.data!;
-
-                  return ListView.builder(
-                    shrinkWrap: true, // Allow ListView to take only necessary space
-                    physics: NeverScrollableScrollPhysics(), // Disable scrolling for ListView
-                    itemCount: orders.length,
-                    itemBuilder: (context, index) {
-                      final order = orders[index];
-                      return GestureDetector(
-                        onTap: () => _navigateToProductDetail(order), // Navigate to product detail
-                        child: Card(
-                          child: ListTile(
-                            title: Text('Заказ №${order['order_id']}'),
-                            subtitle: Text('Сумма: ${order['total_price']}\nСтатус: ${order['status']}'),
-                          ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
-              SizedBox(height: 20),
-              _buildSimilarProductsSection(), // Add similar products section
             ],
           ),
         ),
@@ -435,8 +545,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onItemTapped(index);
         },
         backgroundColor: Color(0xFF18171c),
-        unselectedItemColor: Colors.white, // Color for unselected items
-        unselectedIconTheme: IconThemeData(color: Colors.white), // Color for unselected icons
+        unselectedItemColor: Colors.white,
       ),
     );
   }

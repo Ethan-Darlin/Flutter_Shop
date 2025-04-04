@@ -4,7 +4,9 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shop/screens/addCategoryScreen.dart';
 import 'package:shop/screens/addProductScreen.dart';
 import 'package:shop/screens/productListScreen.dart';
-import 'package:shop/screens/auth_screen.dart'; // Import the AuthScreen
+import 'package:shop/screens/auth_screen.dart';
+
+import 'createAddressScreen.dart'; // Import the AuthScreen
 
 class UserInfoScreen extends StatefulWidget {
   const UserInfoScreen({
@@ -117,6 +119,15 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                     );
                   },
                   child: Text('Добавить категорию'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => CreateAddressScreen()),
+                    );
+                  },
+                  child: Text('Создать новый адрес'),
                 ),
               ],
             );

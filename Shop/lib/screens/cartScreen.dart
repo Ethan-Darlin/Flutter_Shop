@@ -11,12 +11,15 @@ class CartScreen extends StatefulWidget {
 
 class _CartScreenState extends State<CartScreen> {
   late Future<List<Map<String, dynamic>>> _cartItemsFuture;
+  late Future<List<Map<String, dynamic>>> _deliveryAddressesFuture;
+  String? _selectedDeliveryId; // Для хранения выбранного адреса
   int _selectedIndex = 1;
 
   @override
   void initState() {
     super.initState();
     _cartItemsFuture = FirebaseService().getCartItems();
+    _deliveryAddressesFuture = FirebaseService().getAllDeliveryAddresses(); // Получаем адреса
     print('CartScreen initialized and fetching cart items...');
   }
 
@@ -47,7 +50,7 @@ class _CartScreenState extends State<CartScreen> {
     print('Cart items list updated after removal.');
   }
 
-  Future<void> _placeOrder() async {
+  Future<void> _placeOrder(String deliveryId) async {
     print('Attempting to place order...');
 
     final cartItems = await FirebaseService().getCartItems();
@@ -62,7 +65,7 @@ class _CartScreenState extends State<CartScreen> {
     print('Total price calculated: $totalPrice');
 
     // Оформляем заказ
-    await FirebaseService().placeOrder(cartItems, totalPrice);
+    await FirebaseService().placeOrder(cartItems, totalPrice, deliveryId); // Передаем deliveryId
     print('Order placed successfully.');
 
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -134,12 +137,42 @@ class _CartScreenState extends State<CartScreen> {
 
           return Column(
             children: [
+              FutureBuilder<List<Map<String, dynamic>>>(
+                future: _deliveryAddressesFuture,
+                builder: (context, deliverySnapshot) {
+                  if (deliverySnapshot.connectionState == ConnectionState.waiting) {
+                    return Center(child: CircularProgressIndicator());
+                  } else if (deliverySnapshot.hasError) {
+                    return Center(child: Text('Ошибка: ${deliverySnapshot.error}'));
+                  } else if (!deliverySnapshot.hasData || deliverySnapshot.data!.isEmpty) {
+                    return Center(child: Text('Нет адресов доставки'));
+                  }
+
+                  final addresses = deliverySnapshot.data!;
+                  return DropdownButton<String>(
+                    hint: Text('Выберите адрес доставки'),
+                    value: _selectedDeliveryId,
+                    onChanged: (String? newValue) {
+                      setState(() {
+                        _selectedDeliveryId = newValue;
+                      });
+                    },
+                    items: addresses.map<DropdownMenuItem<String>>((address) {
+                      return DropdownMenuItem<String>(
+                        value: address['doc_id'], // Используем doc_id как значение
+                        child: Text(address['delivery_address']),
+                      );
+                    }).toList(),
+                  );
+                },
+              ),
               Expanded(
                 child: ListView.builder(
                   itemCount: cartItems.length,
                   itemBuilder: (context, index) {
                     final item = cartItems[index];
                     final docId = item['docId'];
+                    final orderItemId = item['order_item_id']; // Предполагается, что у вас есть этот ID
 
                     return ListTile(
                       title: Text(item['name']),
@@ -151,16 +184,18 @@ class _CartScreenState extends State<CartScreen> {
                           Text('Количество: ${item['quantity'].toString()}'),
                         ],
                       ),
-                      trailing: IconButton(
-                        icon: Icon(Icons.remove_shopping_cart),
-                        onPressed: () {
-                          if (docId != null) {
-                            print('Removing item from cart: $docId');
-                            _removeFromCart(docId);
-                          } else {
-                            print('Ошибка: docId равен null');
-                          }
-                        },
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.remove_shopping_cart),
+                            onPressed: () {
+                              if (docId != null) {
+                                _removeFromCart(docId);
+                              }
+                            },
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -173,7 +208,15 @@ class _CartScreenState extends State<CartScreen> {
                   children: [
                     Text('Итого: ${totalPrice.toStringAsFixed(2)}'),
                     ElevatedButton(
-                      onPressed: _placeOrder,
+                      onPressed: () async {
+                        if (_selectedDeliveryId != null) {
+                          await _placeOrder(_selectedDeliveryId!);
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Пожалуйста, выберите адрес.')),
+                          );
+                        }
+                      },
                       child: Text('Оформить заказ'),
                     ),
                   ],
@@ -199,15 +242,14 @@ class _CartScreenState extends State<CartScreen> {
           ),
         ],
         currentIndex: _selectedIndex,
-
-        unselectedItemColor: Colors.white, // Цвет для невыбранных элементов
-        backgroundColor: Color(0xFF18171c), // Цвет фона
+        unselectedItemColor: Colors.white,
+        backgroundColor: Color(0xFF18171c),
         onTap: (index) {
           if (index == 2) {
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
-                builder: (context) => ProfileScreen(), // Переход на экран профиля
+                builder: (context) => ProfileScreen(),
               ),
             );
           } else {

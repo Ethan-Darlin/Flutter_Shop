@@ -261,19 +261,18 @@ import 'package:flutter/cupertino.dart';
       }
       return [];
     }
-    Future<void> placeOrder(List<Map<String, dynamic>> cartItems, double totalPrice) async {
+    Future<void> placeOrder(List<Map<String, dynamic>> cartItems, double totalPrice, String deliveryId) async {
       final userId = FirebaseAuth.instance.currentUser?.uid;
 
       if (userId != null) {
-        // Создание заказа в таблице Orders
         DocumentReference orderRef = await firestore.collection('orders').add({
           'user_id': userId,
           'total_price': totalPrice,
           'created_at': FieldValue.serverTimestamp(),
-          'status': 'pending',
+          'delivery_id': deliveryId,  // Теперь deliveryId передается как параметр
         });
 
-        // Добавление товаров в таблицу Order_Items
+        // Добавление товаров в таблицу Order_Items с полем status
         for (var item in cartItems) {
           await firestore.collection('order_items').add({
             'order_id': orderRef.id,  // Сохраняем идентификатор заказа
@@ -282,6 +281,7 @@ import 'package:flutter/cupertino.dart';
             'price': item['price'],
             'quantity': item['quantity'],
             'selected_size': item['selected_size'],
+            'item_status': 'pending', // Устанавливаем начальный статус
           });
 
           // Обновление количества товара в Firestore
@@ -296,6 +296,9 @@ import 'package:flutter/cupertino.dart';
         await clearCart();
       }
     }
+
+    //status
+
 
     Future<void> changePassword({required String currentPassword, required String newPassword}) async {
       User? user = auth.currentUser;
@@ -383,5 +386,43 @@ import 'package:flutter/cupertino.dart';
         }).toList();
       }
       return [];
+    }
+    //delivery
+    Future<String?> addDelivery(String deliveryAddress) async {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null) {
+        DocumentReference deliveryRef = await firestore.collection('delivery').add({
+          'delivery_address': deliveryAddress,
+        });
+        return deliveryRef.id; // Возвращаем delivery_id
+      }
+      return null; // Возвращаем null, если пользователь не аутентифицирован
+    }
+    Future<List<Map<String, dynamic>>> getUserDeliveryAddresses() async {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null) {
+        QuerySnapshot deliverySnapshot = await firestore
+            .collection('delivery')
+            .where('user_id', isEqualTo: userId)
+            .get();
+
+        return deliverySnapshot.docs.map((doc) {
+          return {
+            'doc_id': doc.id,
+            'delivery_address': doc['delivery_address'],
+          };
+        }).toList();
+      }
+      return [];
+    }
+    Future<List<Map<String, dynamic>>> getAllDeliveryAddresses() async {
+      QuerySnapshot deliverySnapshot = await firestore.collection('delivery').get();
+
+      return deliverySnapshot.docs.map((doc) {
+        return {
+          'doc_id': doc.id,
+          'delivery_address': doc['delivery_address'],
+        };
+      }).toList();
     }
   }

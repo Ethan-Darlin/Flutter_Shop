@@ -40,14 +40,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         _averageRating = result['average'];
         _hasReviews = result['hasReviews'];
         reviewsCount = result['count'];
-
       });
     });
-    _similarProductsFuture = _fetchSimilarProducts();
+    // Update this line
+    similarProductsFuture = _fetchRandomProducts();
 
     // Добавляем слушатель на изменение фокуса
     _focusNode.addListener(() {
-      setState(() {});
+    setState(() {});
     });
   }
 
@@ -55,18 +55,57 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     try {
       QuerySnapshot<Map<String, dynamic>> snapshot = await FirebaseFirestore.instance
           .collection('products')
-          .where('category', isEqualTo: widget.product['category'])
-          .get();
+          .get(); // Получаем все товары
+
+      print('Всего товаров: ${snapshot.docs.length}');
+
+      if (snapshot.docs.isEmpty) {
+        print('Нет товаров в коллекции.');
+        return [];
+      }
 
       List<Map<String, dynamic>> allProducts = snapshot.docs
           .map((doc) => doc.data())
-          .where((product) => product['product_id'] != widget.product['product_id'])
           .toList();
 
+      // Исключаем текущий товар из списка
+      allProducts.removeWhere((product) => product['product_id'] == widget.product['product_id']);
+
+      print('Найдено товаров после исключения текущего: ${allProducts.length}');
+
+      if (allProducts.isEmpty) {
+        print('Нет похожих товаров.');
+        return [];
+      }
+
+      // Перемешиваем список и берем первые 4 товара
       allProducts.shuffle();
       return allProducts.take(4).toList();
     } catch (e) {
       print('Ошибка при загрузке похожих товаров: $e');
+      return [];
+    }
+  }
+  Future<List<Map<String, dynamic>>> _fetchRandomProducts() async {
+    try {
+      QuerySnapshot<Map<String, dynamic>> snapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .get(); // Получаем все товары
+
+      if (snapshot.docs.isEmpty) {
+        print('Нет товаров в коллекции.');
+        return [];
+      }
+
+      List<Map<String, dynamic>> allProducts = snapshot.docs
+          .map((doc) => doc.data())
+          .toList();
+
+      // Перемешиваем список и берем первые 4 товара
+      allProducts.shuffle();
+      return allProducts.take(4).toList();
+    } catch (e) {
+      print('Ошибка при загрузке случайных товаров: $e');
       return [];
     }
   }
@@ -101,9 +140,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       final productData = productQuery.docs.first.data() as Map<String, dynamic>;
       setState(() {
         widget.product['size_stock'] = productData['size_stock'];
+        widget.product['category'] = productData['category']; // Загружаем категорию
         _selectedSize = null;
         _quantity = 1;
       });
+      print('Загруженная категория: ${widget.product['category']}'); // Логируем загруженную категорию
+    } else {
+      print('Товар не найден.');
     }
   }
 
@@ -799,8 +842,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                         child: Text(
                           'Добавить отзыв',
                           style: TextStyle(
-                            color: Colors.white, // Устанавливаем цвет текста белым
-                            fontSize: 18, // Устанавливаем размер текста
+                            color: Colors.white,
+                            fontSize: 18,
                           ),
                         ),
                         style: ElevatedButton.styleFrom(backgroundColor: Color(0xFFEE3A57)),
