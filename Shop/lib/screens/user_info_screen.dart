@@ -5,6 +5,7 @@ import 'package:shop/screens/addCategoryScreen.dart';
 import 'package:shop/screens/addProductScreen.dart';
 import 'package:shop/screens/productListScreen.dart';
 import 'package:shop/screens/auth_screen.dart';
+import 'package:shop/screens/scan_page.dart';
 
 import 'createAddressScreen.dart'; // Import the AuthScreen
 
@@ -128,6 +129,15 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                     );
                   },
                   child: Text('Создать новый адрес'),
+                ),
+                IconButton(
+                  icon: Icon(Icons.qr_code_scanner),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => QRScanPage()),
+                    );
+                  },
                 ),
               ],
             );
