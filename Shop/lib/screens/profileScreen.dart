@@ -176,6 +176,114 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // === КОНЕЦ ИСПРАВЛЕНИЯ ===
     }
   }
+  Future<List<Map<String, dynamic>>> _fetchCompletedOrders() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return [];
+
+    try {
+      final ordersSnapshot = await FirebaseFirestore.instance
+          .collection('orders')
+          .where('user_id', isEqualTo: userId)
+          .orderBy('created_at', descending: true)
+          .get();
+
+      final orderIds = ordersSnapshot.docs.map((doc) => doc.id).toList();
+      final orderItemsSnapshot = await FirebaseFirestore.instance
+          .collection('order_items')
+          .where('order_id', whereIn: orderIds)
+          .get();
+
+      final groupedItems = <String, List<Map<String, dynamic>>>{};
+      for (var doc in orderItemsSnapshot.docs) {
+        final data = {
+          'order_item_id': doc.id,
+          ...doc.data() as Map<String, dynamic>,
+        };
+        final orderId = data['order_id'] as String;
+        if (!groupedItems.containsKey(orderId)) {
+          groupedItems[orderId] = [];
+        }
+        groupedItems[orderId]!.add(data);
+      }
+
+      // Filter for completed orders
+      return groupedItems.entries
+          .where((entry) => entry.value.any((item) => item['item_status'] == 'completed'))
+          .map((entry) => {
+        'order_id': entry.key,
+        'items': entry.value,
+        'order_date': ordersSnapshot.docs.firstWhere((doc) => doc.id == entry.key)['created_at'],
+      })
+          .toList();
+    } catch (e) {
+      print('Error fetching completed orders: $e');
+      return [];
+    }
+  }
+  void _showPurchaseHistoryDialog() async {
+    final completedOrders = await _fetchCompletedOrders(); // Fetch completed orders
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("История покупок"),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: completedOrders.isEmpty
+                ? Center(child: Text("Нет завершенных заказов"))
+                : ListView.builder(
+              itemCount: completedOrders.length,
+              itemBuilder: (context, index) {
+                final order = completedOrders[index];
+                final orderId = order['order_id'];
+                final orderDate = order['order_date'];
+                final items = order['items'];
+
+                return Card(
+                  margin: EdgeInsets.symmetric(vertical: 8.0),
+                  child: Padding(
+                    padding: const EdgeInsets.all(16.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Заказ #$orderId', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text('Дата: ${_formatDate(orderDate)}'),
+                        ...items.map((item) => Text('${item['name']} - ${item['quantity']} шт.')).toList(),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text("Закрыть"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildActionButtons() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Existing buttons...
+
+          ElevatedButton(
+            child: Text("История покупок"),
+            onPressed: _showPurchaseHistoryDialog,
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _fetchSimilarProducts() async {
     try {
