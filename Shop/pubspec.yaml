@@ -46,6 +46,8 @@ dependencies:
   flutter_svg: ^2.0.17
   qr_flutter: ^4.1.0
   mobile_scanner: ^6.0.7
+  http: ^1.3.0
+  flutter_stripe: ^11.4.0
 
 
 dev_dependencies:
@@ -70,6 +72,7 @@ flutter:
   # the material Icons class.
   uses-material-design: true
   assets:
+    - assets/images/ #
     - assets/images/procent.png
     - assets/images/google.svg
     - assets/images/star.png

@@ -268,33 +268,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildActionButtons() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Existing buttons...
-
-          ElevatedButton(
-            child: Text("История покупок"),
-            onPressed: _showPurchaseHistoryDialog,
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _fetchSimilarProducts() async {
     try {
       similarProductsFuture = FirebaseFirestore.instance
           .collection('products')
-      // .orderBy(...) // Можно добавить логику выбора похожих товаров
-          .limit(10) // Ограничиваем количество
+      // .orderBy(...)
+          .limit(10)
           .get()
           .then((snapshot) {
         if (snapshot.docs.isEmpty) {
-          return <Map<String, dynamic>>[]; // Возвращаем пустой список, если нет продуктов
+          return <Map<String, dynamic>>[];
         }
         final allProducts = snapshot.docs.map((doc) {
           return {
@@ -302,7 +285,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ...doc.data() as Map<String, dynamic>,
           };
         }).toList();
-        allProducts.shuffle(); // Перемешиваем для разнообразия
+        allProducts.shuffle();
         return allProducts;
       });
       if (mounted) setState(() {}); // Обновляем UI
@@ -959,11 +942,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              // Передаем product_id вместо всего объекта,
-                              // ProductDetailScreen сам загрузит данные по ID
-                              // builder: (context) => ProductDetailScreen(productId: product['product_id']),
-                              // ИЛИ если ProductDetailScreen принимает Map:
-                              builder: (context) => ProductDetailScreen(product: product),
+                              builder: (context) => ProductDetailScreen(productId: product['product_id']),
                             ),
                           );
                         },

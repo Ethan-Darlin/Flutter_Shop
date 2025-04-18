@@ -63,6 +63,7 @@ import 'package:flutter/cupertino.dart';
           'role': role,
           'card_token': '',
           'created_at': FieldValue.serverTimestamp(),
+          'loyalty_points': ''
         });
 
         print("User registered and added to Firestore.");
@@ -110,6 +111,7 @@ import 'package:flutter/cupertino.dart';
               'role': 'user',
               'card_token': '',
               'created_at': FieldValue.serverTimestamp(),
+              'loyalty_points': ''
             });
           }
 
