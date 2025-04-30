@@ -47,6 +47,27 @@ import 'package:flutter/cupertino.dart';
         }
       }
     }
+    Future<void> updateUserData(Map<String, dynamic> updates) async {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null) {
+        await firestore.collection('users').doc(userId).update(updates);
+      } else {
+        print('Ошибка: пользователь не аутентифицирован.');
+      }
+    }
+    Future<void> updateCartItem(String docId, Map<String, dynamic> updates) async {
+      final userId = FirebaseAuth.instance.currentUser?.uid;
+      if (userId != null) {
+        await firestore
+            .collection('users')
+            .doc(userId)
+            .collection('cart')
+            .doc(docId)
+            .update(updates);
+      } else {
+        print('Ошибка: пользователь не аутентифицирован.');
+      }
+    }
 
     Future<void> onRegister({required String email, required String password, required String username, String role = "user"}) async {
       try {
@@ -156,15 +177,48 @@ import 'package:flutter/cupertino.dart';
     Future<void> addToCart(Map<String, dynamic> product) async {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId != null) {
+        // Получаем идентификаторы размера и цвета
+        final productId = product['product_id'];
+        final selectedSize = product['selected_size'];
+        final selectedColor = product['selected_color'];
+
+        // Загружаем данные о товаре из Firestore
+        final productDoc = await firestore
+            .collection('products')
+            .where('product_id', isEqualTo: productId)
+            .limit(1)
+            .get();
+
+        if (productDoc.docs.isEmpty) {
+          throw Exception("Товар с ID $productId не найден.");
+        }
+
+        final productData = productDoc.docs.first.data();
+        final sizes = productData['sizes'] as Map<String, dynamic>?;
+
+        // Ищем доступное количество для выбранного размера и цвета
+        int availableQuantity = 1; // Значение по умолчанию
+        if (sizes != null &&
+            sizes.containsKey(selectedSize) &&
+            sizes[selectedSize]['color_quantities'] != null) {
+          final colorQuantities = sizes[selectedSize]['color_quantities'] as Map<String, dynamic>;
+          availableQuantity = colorQuantities[selectedColor] ?? 1;
+        }
+
+        // Сохраняем товар в корзину
         await firestore.collection('users').doc(userId).collection('cart').add({
-          'product_id': product['product_id'],
+          'product_id': productId,
           'name': product['name'],
           'description': product['description'],
           'price': product['price'],
           'image_url': product['image_url'],
-          'selected_size': product['selected_size'],
+          'selected_size': selectedSize,
+          'selected_color': selectedColor,
           'quantity': product['quantity'],
+          'available_quantity': availableQuantity, // Сохраняем максимальное количество
         });
+
+        print("Товар добавлен в корзину с доступным количеством: $availableQuantity");
       }
     }
 
@@ -179,13 +233,13 @@ import 'package:flutter/cupertino.dart';
 
         return cartSnapshot.docs.map((doc) {
           final data = doc.data() as Map<String, dynamic>;
-          data['docId'] = doc.id; // Добавляем docId в данные
+          data['docId'] = doc.id;
+          print('Cart Item: $data'); // Отладочный вывод
           return data;
         }).toList();
       }
       return [];
     }
-
     Future<void> removeFromCart(String docId) async {
       final userId = FirebaseAuth.instance.currentUser?.uid;
       if (userId != null) {
@@ -210,40 +264,47 @@ import 'package:flutter/cupertino.dart';
       }
     }
 
-    Future<void> updateProductStock(int productId, String size, int quantity) async {
+    Future<void> updateProductStock(
+        int productId, String size, String color, int quantityChange) async {
       final productQuery = await firestore
           .collection('products')
           .where('product_id', isEqualTo: productId)
+          .limit(1)
           .get();
 
       if (productQuery.docs.isNotEmpty) {
-        final productDoc = productQuery.docs.first; // Берем первый найденный документ
+        final productDoc = productQuery.docs.first;
         final productRef = productDoc.reference;
         final productData = productDoc.data() as Map<String, dynamic>;
-        final sizeStock = productData['size_stock'] as Map<String, dynamic>?;
 
-        if (sizeStock != null && sizeStock.containsKey(size)) {
-          final currentStock = sizeStock[size] as int?;
+        // Проверяем, есть ли нужный размер
+        final sizes = productData['sizes'] as Map<String, dynamic>?;
+        if (sizes != null && sizes.containsKey(size)) {
+          final sizeData = sizes[size] as Map<String, dynamic>;
+          final colorQuantities = sizeData['color_quantities'] as Map<String, dynamic>?;
 
-          if (currentStock != null) {
-            final newStock = currentStock + quantity; // Увеличиваем или уменьшаем количество
+          if (colorQuantities != null && colorQuantities.containsKey(color)) {
+            final currentStock = colorQuantities[color] as int;
 
+            // Вычисляем новое количество
+            final newStock = currentStock + quantityChange;
             if (newStock >= 0) {
+              // Обновляем количество товара в Firestore
               await productRef.update({
-                'size_stock.$size': newStock,
+                'sizes.$size.color_quantities.$color': newStock,
               });
-              print('Количество товара обновлено: $size -> $newStock');
+              print('Количество обновлено: $color -> $newStock');
             } else {
-              print('Ошибка: недостаточно товара на складе для размера $size');
+              print('Ошибка: Недостаточно товара на складе для $color.');
             }
           } else {
-            print('Ошибка: текущее количество товара для размера $size равно null');
+            print('Ошибка: Цвет $color не найден для размера $size.');
           }
         } else {
-          print('Ошибка: размер $size не найден в size_stock');
+          print('Ошибка: Размер $size не найден.');
         }
       } else {
-        print('Ошибка: товар с ID $productId не найден');
+        print('Ошибка: Товар с ID $productId не найден.');
       }
     }
     Future<List<Map<String, dynamic>>> getUserOrders() async {
@@ -263,43 +324,62 @@ import 'package:flutter/cupertino.dart';
       }
       return [];
     }
-    Future<void> placeOrder(List<Map<String, dynamic>> cartItems, double totalPrice, String deliveryId) async {
+    Future<void> placeOrder(
+        List<Map<String, dynamic>> cartItems, double totalPrice, String deliveryId) async {
       final userId = FirebaseAuth.instance.currentUser?.uid;
 
       if (userId != null) {
+        // Создаем заказ
         DocumentReference orderRef = await firestore.collection('orders').add({
           'user_id': userId,
           'total_price': totalPrice,
           'created_at': FieldValue.serverTimestamp(),
-          'delivery_id': deliveryId,  // Теперь deliveryId передается как параметр
+          'delivery_id': deliveryId,
         });
 
-        // Добавление товаров в таблицу Order_Items с полем status
+        // Добавляем товары в заказ
         for (var item in cartItems) {
           await firestore.collection('order_items').add({
-            'order_id': orderRef.id,  // Сохраняем идентификатор заказа
+            'order_id': orderRef.id,
             'product_id': item['product_id'],
             'name': item['name'],
             'price': item['price'],
             'quantity': item['quantity'],
             'selected_size': item['selected_size'],
-            'item_status': 'pending', // Устанавливаем начальный статус
+            'selected_color': item['selected_color'],
+            'item_status': 'В пути',
           });
-
-          // Обновление количества товара в Firestore
-          await updateProductStock(
-            item['product_id'] as int,
-            item['selected_size'],
-            -item['quantity'],
-          );
         }
 
-        // Очистка корзины после оформления заказа
-        await clearCart();
+        // Рассчитываем баллы лояльности (2% от суммы заказа)
+        double loyaltyPoints = totalPrice * 0.02;
+
+        // Получаем текущие баллы пользователя
+        DocumentSnapshot userDoc = await firestore.collection('users').doc(userId).get();
+        dynamic currentPointsDynamic = userDoc['loyalty_points'] ?? '0';
+
+        // Преобразуем текущие баллы в double (если они хранятся как строка или другое значение)
+        double currentPoints;
+        if (currentPointsDynamic is String) {
+          currentPoints = double.tryParse(currentPointsDynamic) ?? 0.0;
+        } else if (currentPointsDynamic is double) {
+          currentPoints = currentPointsDynamic;
+        } else if (currentPointsDynamic is int) {
+          currentPoints = currentPointsDynamic.toDouble();
+        } else {
+          currentPoints = 0.0; // Если тип неизвестен, устанавливаем 0
+        }
+
+        // Обновляем баллы лояльности пользователя
+        double newPoints = currentPoints + loyaltyPoints;
+
+        await firestore.collection('users').doc(userId).update({
+          'loyalty_points': newPoints.toStringAsFixed(2), // Сохраняем с точностью до сотых
+        });
+
+        print('Начислено ${loyaltyPoints.toStringAsFixed(2)} баллов лояльности. Всего: ${newPoints.toStringAsFixed(2)}');
       }
     }
-
-    //status
 
 
     Future<void> changePassword({required String currentPassword, required String newPassword}) async {
@@ -389,16 +469,21 @@ import 'package:flutter/cupertino.dart';
       }
       return [];
     }
+
     //delivery
-    Future<String?> addDelivery(String deliveryAddress) async {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId != null) {
-        DocumentReference deliveryRef = await firestore.collection('delivery').add({
-          'delivery_address': deliveryAddress,
-        });
-        return deliveryRef.id; // Возвращаем delivery_id
+    Future<String?> addDelivery(Map<String, dynamic> deliveryData) async {
+      try {
+        // Добавляем запись в корневую коллекцию "delivery"
+        final docRef = await FirebaseFirestore.instance
+            .collection('delivery') // Корневая коллекция
+            .add(deliveryData);
+
+        print('Данные успешно добавлены. ID документа: ${docRef.id}');
+        return docRef.id; // Возвращаем ID добавленного документа
+      } catch (e) {
+        print('Ошибка при добавлении адреса: $e');
+        return null;
       }
-      return null; // Возвращаем null, если пользователь не аутентифицирован
     }
     Future<List<Map<String, dynamic>>> getUserDeliveryAddresses() async {
       final userId = FirebaseAuth.instance.currentUser?.uid;
@@ -424,6 +509,8 @@ import 'package:flutter/cupertino.dart';
         return {
           'doc_id': doc.id,
           'delivery_address': doc['delivery_address'],
+          'latitude': doc['latitude'], // Добавляем широту
+          'longitude': doc['longitude'], // Добавляем долготу
         };
       }).toList();
     }

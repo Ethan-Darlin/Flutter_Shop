@@ -9,6 +9,8 @@ import 'package:shop/screens/productListScreen.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 
+import 'likedProductsScreen.dart';
+
 class ProfileScreen extends StatefulWidget {
   @override
   _ProfileScreenState createState() => _ProfileScreenState();
@@ -19,7 +21,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<List<Map<String, dynamic>>>? orderItemsFuture;
   Future<List<Map<String, dynamic>>>? similarProductsFuture;
   int _selectedIndex = 2; // Профиль - третий элемент (индекс 2)
-
+  bool _isPurchaseHistoryExpanded = false; // Переменная для отслеживания состояния
   // --- Цвета темы ---
   static const Color _backgroundColor = Color(0xFF18171c);
   static const Color _surfaceColor = Color(0xFF1f1f24); // Цвет карточек, панелей
@@ -45,8 +47,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
       // Можно показать SnackBar или другое уведомление об ошибке
     }
   }
+  Future<List<Map<String, dynamic>>> _fetchLikedProducts() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return [];
 
-// --- Полный метод _fetchUserOrderItems с правильным catch ---
+    try {
+      // Получаем все лайки текущего пользователя
+      final likedSnapshot = await FirebaseFirestore.instance
+          .collection('isLiked')
+          .where('user_id', isEqualTo: user.uid)
+          .get();
+
+      // Преобразуем product_id в строку, если он хранится как число
+      final likedProductIds = likedSnapshot.docs.map((doc) {
+        final productId = doc['product_id'];
+        return productId is int ? productId.toString() : productId as String;
+      }).toList();
+
+      if (likedProductIds.isEmpty) return [];
+
+      // Получаем данные товаров по их ID
+      final productsSnapshot = await FirebaseFirestore.instance
+          .collection('products')
+          .where(FieldPath.documentId, whereIn: likedProductIds)
+          .get();
+
+      return productsSnapshot.docs.map((doc) {
+        return {
+          'product_id': doc.id,
+          ...doc.data() as Map<String, dynamic>,
+        };
+      }).toList();
+    } catch (e) {
+      print('Ошибка получения лайкнутых товаров: $e');
+      return [];
+    }
+  }
+
   Future<void> _fetchUserOrderItems() async {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) {
@@ -60,7 +97,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
       return;
     }
 
-    // Используем try-catch для всего процесса загрузки
     try {
       // Получаем заказы пользователя
       final ordersSnapshot = await FirebaseFirestore.instance
@@ -134,19 +170,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
 
-      // Преобразуем в список Map для FutureBuilder, добавляя дату
-      final groupedItemList = groupedItems.entries.map((entry) {
-        return {
-          'order_id': entry.key,
-          'items': entry.value,
-          'order_date': orderDates[entry.key] // Добавляем дату
-        };
-      }).toList();
+      // Фильтруем заказы, оставляя только те, где хотя бы один товар имеет статус 'Доставлен' или 'В пути'
+      final filteredOrders = groupedItems.entries
+          .where((entry) => entry.value.any((item) =>
+      item['item_status'] == 'Доставлен' || item['item_status'] == 'В пути'))
+          .map((entry) => {
+        'order_id': entry.key,
+        'items': entry.value,
+        'order_date': orderDates[entry.key], // Добавляем дату
+      })
+          .toList();
 
       // Сортируем группы заказов по дате (новейшие сначала)
-      groupedItemList.sort((a, b) {
+      filteredOrders.sort((a, b) {
         final dateA = a['order_date'] as Timestamp?;
-        final dateB = a['order_date'] as Timestamp?;
+        final dateB = b['order_date'] as Timestamp?;
         if (dateA == null && dateB == null) return 0;
         if (dateA == null) return 1;
         if (dateB == null) return -1;
@@ -155,25 +193,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // === Успешное завершение: Обновляем состояние с результатом ===
       if (mounted) {
-        print("Successfully fetched and processed order items."); // Лог успеха
+        print("Successfully fetched and processed filtered order items."); // Лог успеха
         setState(() {
-          orderItemsFuture = Future.value(groupedItemList);
+          orderItemsFuture = Future.value(filteredOrders);
         });
       }
-
-    } catch (e, stackTrace) { // Ловим ошибку и стек вызовов
+    } catch (e, stackTrace) {
       print('Error fetching order items: $e');
       print('Stack trace: $stackTrace'); // Печатаем стек для детальной отладки
 
       // === ОБРАБОТКА ОШИБКИ: Правильный вызов setState ===
-      final errorFuture = Future<List<Map<String, dynamic>>>.error('Ошибка загрузки заказов: $e', stackTrace); // Передаем и стек
+      final errorFuture = Future<List<Map<String, dynamic>>>.error(
+          'Ошибка загрузки заказов: $e', stackTrace); // Передаем и стек
 
       if (mounted) {
         setState(() {
           orderItemsFuture = errorFuture;
         });
       }
-      // === КОНЕЦ ИСПРАВЛЕНИЯ ===
     }
   }
   Future<List<Map<String, dynamic>>> _fetchCompletedOrders() async {
@@ -300,25 +337,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // --- Вспомогательные функции (форматирование цены) ---
   String formatPrice(dynamic price) {
-    // Скопировано из CartScreen - лучше вынести в утилиты
     double priceDouble;
-    if (price is int) {
+
+    // Преобразование цены в число
+    if (price is double) {
+      priceDouble = price;
+    } else if (price is int) {
       priceDouble = price.toDouble();
     } else if (price is String) {
       priceDouble = double.tryParse(price) ?? 0.0;
-    } else if (price is double) {
-      priceDouble = price;
     } else {
       priceDouble = 0.0;
     }
+
+    // Разделение на рубли и копейки
     int rubles = priceDouble.toInt();
     int kopecks = ((priceDouble - rubles) * 100).round();
-    // Используем ₽ вместо р.
-    return kopecks == 0 ? '$rubles ₽' : '$rubles ₽ ${kopecks.toString().padLeft(2, '0')} коп.';
-  }
 
+    // Форматирование цены
+    if (kopecks == 0) {
+      return '$rubles BYN'; // Цена без копеек
+    } else {
+      String kopecksStr = kopecks.toString().padLeft(2, '0');
+      return '$rubles.$kopecksStr BYN'; // Цена с копейками
+    }
+  }
   String _formatDate(Timestamp? timestamp) {
     if (timestamp == null) return 'Дата неизвестна';
     final date = timestamp.toDate();
@@ -675,8 +719,240 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+  Future<List<Map<String, dynamic>>> _fetchPurchaseHistory() async {
+    final userId = FirebaseAuth.instance.currentUser?.uid;
+    if (userId == null) return [];
 
+    try {
+      // Получаем заказы пользователя
+      final ordersSnapshot = await FirebaseFirestore.instance
+          .collection('orders')
+          .where('user_id', isEqualTo: userId)
+          .orderBy('created_at', descending: true)
+          .get();
+
+      // Если заказов нет
+      if (ordersSnapshot.docs.isEmpty) return [];
+
+      final orderIds = ordersSnapshot.docs.map((doc) => doc.id).toList();
+
+      // Получаем товары из заказов
+      final orderItemsSnapshot = await FirebaseFirestore.instance
+          .collection('order_items')
+          .where('order_id', whereIn: orderIds)
+          .get();
+
+      // Группируем товары по заказам
+      final groupedItems = <String, List<Map<String, dynamic>>>{};
+      for (var doc in orderItemsSnapshot.docs) {
+        final data = {
+          'order_item_id': doc.id,
+          ...doc.data() as Map<String, dynamic>,
+        };
+        final orderId = data['order_id'] as String;
+        if (!groupedItems.containsKey(orderId)) {
+          groupedItems[orderId] = [];
+        }
+        groupedItems[orderId]!.add(data);
+      }
+
+      // Фильтруем заказы, где все товары имеют статус 'Возврат' или 'Получен'
+      return groupedItems.entries
+          .where((entry) => entry.value.every((item) =>
+      item['item_status'] == 'Возврат' || item['item_status'] == 'Выдан'))
+          .map((entry) => {
+        'order_id': entry.key,
+        'items': entry.value,
+        'order_date': ordersSnapshot.docs
+            .firstWhere((doc) => doc.id == entry.key)['created_at'],
+      })
+          .toList();
+    } catch (e) {
+      print('Error fetching purchase history: $e');
+      return [];
+    }
+  }
+  Widget _buildPurchaseHistorySection() {
+    const double maxHeight = 130; // Максимальная фиксированная высота секции
+    const double baseOrderHeight = 60; // Базовая высота заказа, если в нём один товар
+    const double additionalItemHeight = 60; // Дополнительная высота за каждый товар в заказе
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () {
+            setState(() {
+              _isPurchaseHistoryExpanded = !_isPurchaseHistoryExpanded; // Переключаем состояние раскрытия
+            });
+          },
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 12.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'История покупок',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Colors.white,
+                  ),
+                ),
+                Icon(
+                  _isPurchaseHistoryExpanded
+                      ? Icons.keyboard_arrow_up
+                      : Icons.keyboard_arrow_down,
+                  color: Colors.white,
+                ),
+              ],
+            ),
+          ),
+        ),
+        if (_isPurchaseHistoryExpanded)
+          FutureBuilder<List<Map<String, dynamic>>>(
+            future: _fetchPurchaseHistory(),
+            builder: (context, snapshot) {
+              if (snapshot.connectionState == ConnectionState.waiting) {
+                return Center(
+                  child: CircularProgressIndicator(color: _primaryColor),
+                );
+              } else if (snapshot.hasError) {
+                return Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 30),
+                  child: Center(
+                    child: Text(
+                      'Ошибка загрузки истории покупок: ${snapshot.error}',
+                      style: TextStyle(color: Colors.redAccent),
+                    ),
+                  ),
+                );
+              } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
+                return Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.symmetric(horizontal: 16.0),
+                  padding: const EdgeInsets.symmetric(vertical: 40.0, horizontal: 20.0),
+                  decoration: BoxDecoration(
+                    color: _surfaceColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Center(
+                    child: Column(
+                      children: [
+                        Icon(Icons.history_outlined, size: 50, color: _secondaryTextColor),
+                        SizedBox(height: 10),
+                        Text(
+                          'История покупок пуста',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: _secondaryTextColor, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              }
+
+              final historyOrders = snapshot.data!;
+
+              // Рассчитываем динамическую высоту
+              double contentHeight = 0;
+              for (final order in historyOrders) {
+                final items = order['items'] as List<dynamic>? ?? [];
+                // Высота заказа = базовая высота + дополнительные товары
+                contentHeight += baseOrderHeight + (items.length - 1) * additionalItemHeight;
+              }
+
+              final double containerHeight = contentHeight <= maxHeight ? contentHeight : maxHeight;
+
+              return Container(
+                height: containerHeight,
+                child: ListView.separated(
+                  padding: EdgeInsets.symmetric(horizontal: 16.0),
+                  physics: contentHeight > maxHeight
+                      ? AlwaysScrollableScrollPhysics() // Прокрутка, если контент больше максимальной высоты
+                      : NeverScrollableScrollPhysics(), // Без прокрутки, если контент меньше максимальной высоты
+                  itemCount: historyOrders.length,
+                  itemBuilder: (context, index) {
+                    final order = historyOrders[index];
+                    var orderId = order['order_id'] ?? 'N/A';
+                    final items = order['items'] ?? [];
+                    final orderDate = order['order_date'] as Timestamp?;
+
+                    // Обрезаем номер заказа до 10 символов
+                    if (orderId.length > 10) {
+                      orderId = '${orderId.substring(0, 10)}...';
+                    }
+
+                    return Card(
+                      elevation: 0,
+                      margin: EdgeInsets.zero,
+                      color: _surfaceColor,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  'Заказ #$orderId',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                Text(
+                                  _formatDate(orderDate),
+                                  style: TextStyle(
+                                    color: _secondaryTextColor,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            Divider(color: _secondaryTextColor.withOpacity(0.3), height: 20),
+                            ListView.builder(
+                              shrinkWrap: true,
+                              physics: NeverScrollableScrollPhysics(),
+                              itemCount: items.length,
+                              itemBuilder: (context, itemIndex) {
+                                final item = items[itemIndex];
+                                final productName = item['name'] ?? 'Название товара';
+                                final price = item['price'];
+                                final quantity = item['quantity'] ?? 1;
+
+                                return Padding(
+                                  padding: const EdgeInsets.only(bottom: 8.0),
+                                  child: Text(
+                                    '$productName - ${formatPrice(price)} x $quantity',
+                                    style: TextStyle(color: Colors.white, fontSize: 14),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                  separatorBuilder: (context, index) => SizedBox(height: 12),
+                ),
+              );
+            },
+          ),
+      ],
+    );
+  }
   Widget _buildOrdersSection() {
+    const double maxHeight = 210; // Максимальная высота секции
+    const double baseOrderHeight = 150; // Базовая высота заказа, если в нём один товар
+    const double additionalItemHeight = 60; // Дополнительная высота за каждый товар в заказе
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -688,174 +964,188 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
         ),
         FutureBuilder<List<Map<String, dynamic>>>(
-          future: orderItemsFuture, // Убедись, что эта переменная инициализируется
+          future: orderItemsFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return Center(child: CircularProgressIndicator(color: _primaryColor));
             } else if (snapshot.hasError) {
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 30),
-                child: Center(child: Text('Ошибка загрузки заказов: ${snapshot.error}', style: TextStyle(color: Colors.redAccent))),
+                child: Center(
+                  child: Text(
+                    'Ошибка загрузки заказов: ${snapshot.error}',
+                    style: TextStyle(color: Colors.redAccent),
+                  ),
+                ),
               );
             } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
               return Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.symmetric(horizontal: 16.0),
-                  padding: const EdgeInsets.symmetric(vertical: 40.0, horizontal: 20.0),
-                  decoration: BoxDecoration(
-                      color: _surfaceColor,
-                      borderRadius: BorderRadius.circular(12)
+                width: double.infinity,
+                margin: const EdgeInsets.symmetric(horizontal: 16.0),
+                padding: const EdgeInsets.symmetric(vertical: 40.0, horizontal: 20.0),
+                decoration: BoxDecoration(
+                  color: _surfaceColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Center(
+                  child: Column(
+                    children: [
+                      Icon(Icons.receipt_long_outlined, size: 50, color: _secondaryTextColor),
+                      SizedBox(height: 10),
+                      Text(
+                        'У вас еще нет покупок',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: _secondaryTextColor, fontSize: 16),
+                      ),
+                    ],
                   ),
-                  child: Center(
-                      child: Column(
-                        children: [
-                          Icon(Icons.receipt_long_outlined, size: 50, color: _secondaryTextColor),
-                          SizedBox(height: 10),
-                          Text(
-                              'У вас еще нет покупок',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(color: _secondaryTextColor, fontSize: 16)
-                          ),
-                        ],
-                      )
-                  )
+                ),
               );
             }
 
             final groupedOrders = snapshot.data!;
 
-            return ListView.separated(
-              shrinkWrap: true,
-              physics: NeverScrollableScrollPhysics(),
-              padding: EdgeInsets.symmetric(horizontal: 16.0),
-              itemCount: groupedOrders.length,
-              itemBuilder: (context, index) {
-                final order = groupedOrders[index];
-                final orderId = order['order_id'] ?? 'N/A'; // Безопасное получение ID заказа
-                final items = (order['items'] as List<dynamic>?) // Безопасное приведение типа
-                    ?.whereType<Map<String, dynamic>>() // Отфильтровываем не-Map элементы
-                    .toList() ?? // Преобразуем в List
-                    <Map<String, dynamic>>[]; // Или пустой список, если items null или не List
-                final orderDate = order['order_date'] as Timestamp?;
+            // Рассчитываем динамическую высоту
+            double contentHeight = 0;
+            for (final order in groupedOrders) {
+              final items = order['items'] as List<dynamic>? ?? [];
+              // Высота заказа = базовая высота + дополнительные товары
+              contentHeight += baseOrderHeight + (items.length - 1) * additionalItemHeight;
+            }
 
-                // Проверка, если список товаров пуст после фильтрации
-                if (items.isEmpty && orderId != 'N/A') {
-                  print("Предупреждение: Заказ $orderId не содержит корректных товаров.");
-                  // Можно вернуть пустой контейнер или сообщение об ошибке для этого заказа
-                  // return SizedBox.shrink();
-                }
+            final double containerHeight = contentHeight <= maxHeight ? contentHeight : maxHeight;
 
+            return Container(
+              height: containerHeight,
+              child: ListView.separated(
+                padding: EdgeInsets.symmetric(horizontal: 16.0),
+                physics: contentHeight > maxHeight
+                    ? AlwaysScrollableScrollPhysics() // Прокрутка, если контент больше максимальной высоты
+                    : NeverScrollableScrollPhysics(), // Без прокрутки, если контент меньше максимальной высоты
+                itemCount: groupedOrders.length,
+                itemBuilder: (context, index) {
+                  final order = groupedOrders[index];
+                  var orderId = order['order_id'] ?? 'N/A';
+                  final items = order['items'] ?? [];
+                  final orderDate = order['order_date'] as Timestamp?;
 
-                return Card(
-                  elevation: 0,
-                  margin: EdgeInsets.zero,
-                  color: _surfaceColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              // Безопасно обрезаем ID
-                              'Заказ #${orderId.length > 6 ? orderId.substring(0, 6) + '...' : orderId}',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                            Text(
-                              _formatDate(orderDate), // Используем функцию форматирования
-                              style: TextStyle(color: _secondaryTextColor, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                        Divider(color: _secondaryTextColor.withOpacity(0.3), height: 20),
-                        // Список товаров в заказе
-                        ListView.builder(
-                          shrinkWrap: true,
-                          physics: NeverScrollableScrollPhysics(),
-                          itemCount: items.length,
-                          itemBuilder: (context, itemIndex) {
-                            final item = items[itemIndex];
-                            // Безопасно получаем данные товара
-                            final String orderItemId = item['order_item_id']?.toString() ?? ''; // Преобразуем в String, если не null, иначе пустая строка
-                            final String productName = item['name'] ?? 'Название товара';
-                            final String itemStatus = item['item_status'] ?? 'Обрабатывается';
-                            final dynamic itemPrice = item['price']; // Оставляем dynamic для formatPrice
-                            final int itemQuantity = (item['quantity'] is int) ? item['quantity'] : ( (item['quantity'] is String) ? int.tryParse(item['quantity']) ?? 1 : 1 ) ; // Безопасное получение количества
+                  // Обрезаем номер заказа до 10 символов
+                  if (orderId.length > 10) {
+                    orderId = '${orderId.substring(0, 10)}...';
+                  }
 
-                            // Условие для показа QR-кода (настрой под свои статусы)
-                            final bool showQrButton = ['ready_for_pickup', 'delivered', 'completed', 'pending'].contains(itemStatus.toLowerCase()); // Пример статусов
-
-                            return Padding(
-                              padding: const EdgeInsets.only(bottom: 12.0),
-                              child: Row(
-                                children: [
-                                  // Место для изображения товара (если есть)
-                                  // ClipRRect( borderRadius: BorderRadius.circular(8), child: Image.network(..., width: 50, height: 50, fit: BoxFit.cover))
-
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          productName, // Используем безопасную переменную
-                                          style: TextStyle(color: Colors.white, fontSize: 15),
-                                          maxLines: 2,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        SizedBox(height: 4),
-                                        Text(
-                                          // Используем безопасные переменные
-                                          '${formatPrice(itemPrice)} x $itemQuantity',
-                                          style: TextStyle(color: _secondaryTextColor, fontSize: 13),
-                                        ),
-                                        SizedBox(height: 4),
-                                        Text( // Статус товара
-                                          'Статус: $itemStatus', // Используем безопасную переменную
-                                          style: TextStyle(color: _secondaryTextColor.withOpacity(0.8), fontSize: 13),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  SizedBox(width: 10),
-
-                                  // --- START: Кнопка QR-кода ---
-                                  if (showQrButton) // Показываем кнопку только если условие true
-                                    IconButton(
-                                      icon: Icon(Icons.qr_code_2_rounded, color: _primaryColor, size: 28,),
-                                      tooltip: 'Показать QR-код для товара',
-                                      onPressed: () {
-                                        // Передаем ID ЭЛЕМЕНТА ЗАКАЗА (order_item_id), а не ID продукта
-                                        // и название товара в диалог
-                                        _showQrDialog(orderItemId, productName);
-                                      },
-                                      padding: EdgeInsets.zero, // Уменьшает отступы вокруг иконки
-                                      constraints: BoxConstraints(), // Уменьшает минимальный размер кнопки
-                                    )
-                                  else
-                                  // Чтобы сохранить выравнивание, если кнопки нет, можно добавить SizedBox
-                                    SizedBox(width: 48), // Ширина IconButton примерно 48
-
-                                  // --- END: Кнопка QR-кода ---
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ],
+                  return Card(
+                    elevation: 0,
+                    margin: EdgeInsets.zero,
+                    color: _surfaceColor,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
                     ),
-                  ),
-                );
-              },
-              separatorBuilder: (context, index) => SizedBox(height: 12),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Заголовок заказа
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Заказ #$orderId',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                _formatDate(orderDate),
+                                style: TextStyle(color: _secondaryTextColor, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                          Divider(color: _secondaryTextColor.withOpacity(0.3), height: 20),
+                          // Список товаров в заказе
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: NeverScrollableScrollPhysics(),
+                            itemCount: items.length,
+                            itemBuilder: (context, itemIndex) {
+                              final item = items[itemIndex];
+                              final productName = item['name'] ?? 'Название товара';
+                              final price = item['price'];
+                              final quantity = item['quantity'] ?? 1;
+                              final orderItemId = item['order_item_id'] ?? '';
+                              final itemStatus = item['item_status'] ?? '';
+
+                              // Показываем QR-код только для товаров с определёнными статусами
+                              final bool showQrButton = [
+                                'Возврат',
+                                'Получен',
+                                'Доставлен',
+                                'В пути'
+                              ].contains(itemStatus);
+
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8.0),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            productName,
+                                            style: TextStyle(color: Colors.white, fontSize: 14),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          SizedBox(height: 4),
+                                          Text(
+                                            '${formatPrice(price)} x $quantity',
+                                            style: TextStyle(color: _secondaryTextColor, fontSize: 13),
+                                          ),
+                                          SizedBox(height: 4),
+                                          Text(
+                                            'Статус: $itemStatus',
+                                            style: TextStyle(
+                                              color: _secondaryTextColor.withOpacity(0.8),
+                                              fontSize: 13,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    SizedBox(width: 10),
+                                    // Кнопка QR-кода
+                                    if (showQrButton)
+                                      IconButton(
+                                        icon: Icon(
+                                          Icons.qr_code_2_rounded,
+                                          color: _primaryColor,
+                                          size: 28,
+                                        ),
+                                        tooltip: 'Показать QR-код для товара',
+                                        onPressed: () {
+                                          _showQrDialog(orderItemId, productName);
+                                        },
+                                        padding: EdgeInsets.zero,
+                                        constraints: BoxConstraints(),
+                                      )
+                                    else
+                                      SizedBox(width: 48), // Отступ, если кнопки нет
+                                  ],
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+                separatorBuilder: (context, index) => SizedBox(height: 12),
+              ),
             );
           },
         ),
@@ -878,117 +1168,122 @@ class _ProfileScreenState extends State<ProfileScreen> {
           future: similarProductsFuture,
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
-              // Показываем горизонтальные скелетоны
               return Container(
-                height: 280, // Примерная высота карточки
+                height: 280,
                 padding: const EdgeInsets.symmetric(horizontal: 16.0),
                 child: ListView.builder(
                   scrollDirection: Axis.horizontal,
-                  itemCount: 3, // Количество скелетонов
+                  itemCount: 3,
                   itemBuilder: (context, index) => _buildProductCardSkeleton(),
                 ),
               );
             } else if (snapshot.hasError) {
               return Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 30),
-                child: Center(child: Text('${snapshot.error}', style: TextStyle(color: Colors.redAccent))),
+                child: Center(child: Text('Ошибка: ${snapshot.error}', style: TextStyle(color: Colors.redAccent))),
               );
             } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              // Не показываем ничего, если нет похожих товаров (или можно показать сообщение)
               return SizedBox.shrink();
-              // return Padding(
-              //   padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 30),
-              //   child: Center(child: Text('Нет рекомендованных товаров.', style: TextStyle(color: _secondaryTextColor))),
-              // );
             }
 
             final similarProducts = snapshot.data!;
 
             return Container(
-              height: 280, // Высота контейнера для горизонтального списка
+              height: 276,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
-                padding: EdgeInsets.only(left: 16.0, right: 8), // Отступы для списка
+                padding: EdgeInsets.only(left: 16.0, right: 8.0),
                 itemCount: similarProducts.length,
                 itemBuilder: (context, index) {
                   final product = similarProducts[index];
-                  final imageUrl = product['image_url']; // Предполагаем, что это Base64 строка
-                  Uint8List? imageBytes;
+                  final mainImageUrl = product['main_image_url'];
 
-                  if (imageUrl is String && imageUrl.isNotEmpty) {
-                    try {
-                      // Убираем возможные префиксы data:image/...;base64,
-                      final base64String = imageUrl.split(',').last;
-                      imageBytes = base64Decode(base64String);
-                    } catch (e) {
-                      print('Ошибка декодирования изображения для ${product['name']}: $e');
-                      imageBytes = null; // Оставляем null в случае ошибки
-                    }
-                  }
+                  // Получаем первое слово из названия товара
+                  final productName = product['name'] ?? 'Название товара';
+                  final firstWord = productName.split(' ').first;
 
                   return Container(
-                    width: 160, // Ширина карточки товара
+                    width: 160,
                     margin: EdgeInsets.only(right: 8.0),
                     child: Card(
                       elevation: 0,
-                      color: _surfaceColor, // Цвет фона карточки
+                      color: _surfaceColor,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
-                      clipBehavior: Clip.antiAlias, // Обрезка содержимого по границам
-                      child: InkWell( // Делаем карточку кликабельной
-                        onTap: () {
-                          // Используем push, а не pushReplacement, чтобы можно было вернуться
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => ProductDetailScreen(productId: product['product_id']),
+                      clipBehavior: Clip.antiAlias,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Изображение товара
+                          Container(
+                            height: 150,
+                            width: double.infinity,
+                            color: _textFieldFillColor,
+                            child: mainImageUrl != null && mainImageUrl.isNotEmpty
+                                ? Image.network(
+                              mainImageUrl,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) =>
+                                  Icon(Icons.broken_image, color: _secondaryTextColor, size: 40),
+                            )
+                                : Center(
+                              child: Icon(Icons.image_not_supported, color: _secondaryTextColor, size: 40),
                             ),
-                          );
-                        },
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Изображение товара
-                            Container(
-                              height: 150, // Фиксированная высота изображения
-                              width: double.infinity,
-                              color: _textFieldFillColor, // Фон-заглушка
-                              child: imageBytes != null
-                                  ? Image.memory(
-                                imageBytes,
-                                fit: BoxFit.cover,
-                                errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, color: _secondaryTextColor, size: 40),
-                              )
-                                  : Center(child: Icon(Icons.image_not_supported, color: _secondaryTextColor, size: 40)), // Заглушка
-                            ),
-
-                            // Информация о товаре
-                            Padding(
-                              padding: const EdgeInsets.all(10.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    product['name'] ?? 'Название товара',
-                                    style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-                                    maxLines: 2, // Максимум 2 строки
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  SizedBox(height: 6),
-                                  Text(
-                                    formatPrice(product['price'] ?? 0),
-                                    style: TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.all(10.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // Название товара (только первое слово)
+                                Text(
+                                  firstWord,
+                                  style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                                  maxLines: 1, // Ограничиваем в одну строку
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                SizedBox(height: 4),
+                                // Цена товара
+                                Text(
+                                  formatPrice(product['price'] ?? 0),
+                                  style: TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15),
+                                ),
+                                SizedBox(height: 5),
+                                // Кнопка "Подробнее"
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton(
+                                    onPressed: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (context) => ProductDetailScreen(
+                                            productId: product['product_id'].toString(), // Преобразуем в строку
+                                          ),
+                                        ),
+                                      );
+                                    },
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: _primaryColor,
+                                      padding: EdgeInsets.symmetric(vertical: 8),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(8),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'Подробнее',
+                                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.white),
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
                     ),
                   );
@@ -1120,10 +1415,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: _backgroundColor,
       appBar: AppBar(
-        title: Text('Личный кабинет', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        backgroundColor: _backgroundColor, // Фон AppBar в цвет фона Scaffold
-        elevation: 0, // Убираем тень
-        automaticallyImplyLeading: false, // Убираем кнопку назад по умолчанию
+        title: Text(
+          'Личный кабинет',
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: _backgroundColor,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            icon: Icon(Icons.favorite_border, color: Colors.white),
+            tooltip: 'Избранное',
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (context) => LikedProductsScreen()),
+              );
+            },
+          ),
+        ],
       ),
       body: RefreshIndicator( // Добавляем возможность обновить данные свайпом вниз
         onRefresh: () async {
@@ -1146,6 +1456,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   child: _buildUserInfoSection(), // Секция с информацией о пользователе
                 ),
                 _buildOrdersSection(), // Секция с историей заказов
+                _buildPurchaseHistorySection(),
                 _buildSimilarProductsSection(), // Секция с похожими товарами
                 _buildActionButtons(), // Секция с кнопками действий
               ],

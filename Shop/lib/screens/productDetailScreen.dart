@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shop/firebase_service.dart';
 import 'dart:convert';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -382,6 +383,29 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
     return null; // Если категория не найдена
   }
+  void _shareProduct() {
+    if (_productData == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Данные о товаре не загружены.')),
+      );
+      return;
+    }
+    final String productName = _productData?['name'] ?? 'Товар';
+    final String productPrice = formatPrice(_productData?['price']);
+    // Вот ссылка-редирект на твой сервер!
+    final String clickUrl = "https://server-8h1s.onrender.com/product_redirect?productId=${widget.productId}";
+
+    final String shareMessage = '''
+✨ $productName
+
+💸 Цена: $productPrice
+
+📲 Открыть товар в приложении: $clickUrl
+''';
+
+    Share.share(shareMessage, subject: 'Интересный товар!');
+  }
+
 
   Future<List<Map<String, dynamic>>> _fetchSimilarProducts() async {
     try {
@@ -2190,12 +2214,12 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   void _showEditReviewDialog(BuildContext context, String reviewId, String currentComment, List<String> imageUrls) {
     final TextEditingController _editController = TextEditingController(text: currentComment);
     List<String> updatedImages = List.from(imageUrls); // Копируем текущие изображения
-    bool isUploading = false; // Флаг для отображения загрузки
+    bool isUploading = false; // Флаг для загрузки изображений
 
     showDialog(
       context: context,
       builder: (context) {
-        return StatefulBuilder( // Используем StatefulBuilder для управления состоянием в диалоге
+        return StatefulBuilder(
           builder: (BuildContext context, StateSetter setState) {
             return AlertDialog(
               backgroundColor: ProductDetailScreen.lightBg,
@@ -2206,101 +2230,115 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    TextField(
-                      controller: _editController,
-                      maxLines: 5,
-                      style: TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: 'Введите новый комментарий...',
-                        hintStyle: TextStyle(color: Colors.grey),
-                        filled: true,
-                        fillColor: ProductDetailScreen.lighterBg,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10.0),
-                          borderSide: BorderSide.none,
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(10.0),
-                          borderSide: BorderSide(
-                            color: ProductDetailScreen.primaryColor,
-                            width: 1.5,
+                    // Поле ввода комментария с кнопкой "Прикрепить фото"
+                    Stack(
+                      children: [
+                        TextField(
+                          controller: _editController,
+                          maxLines: 4,
+                          style: TextStyle(color: Colors.white, fontSize: 15),
+                          decoration: InputDecoration(
+                            hintText: 'Введите ваш комментарий...',
+                            hintStyle: TextStyle(color: Colors.grey[500]),
+                            filled: true,
+                            fillColor: ProductDetailScreen.lighterBg,
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: 16.0,
+                              vertical: 14.0,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10.0),
+                              borderSide: BorderSide.none,
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10.0),
+                              borderSide: BorderSide(
+                                color: ProductDetailScreen.primaryColor,
+                                width: 1.5,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                    SizedBox(height: 16),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: [
-                        // Отображение текущих изображений с возможностью удаления
-                        ...updatedImages.map((url) {
-                          return Stack(
-                            alignment: Alignment.topRight,
-                            children: [
-                              _buildNetworkImage(url,
-                                  width: 70, height: 70, borderRadius: BorderRadius.circular(8)),
-                              Positioned(
-                                top: -2,
-                                right: -2,
-                                child: InkWell(
-                                  onTap: () {
-                                    setState(() => updatedImages.remove(url)); // Удаляем изображение
-                                  },
-                                  child: CircleAvatar(
-                                    radius: 10,
-                                    backgroundColor: Colors.black.withOpacity(0.7),
-                                    child: Icon(Icons.close, color: Colors.white, size: 12),
+                        // Кнопка "Прикрепить фото" внутри поля ввода
+                        Positioned(
+                          bottom: 10,
+                          right: 12,
+                          child: InkWell(
+                            onTap: () async {
+                              final images = await _pickImages();
+                              if (images.isNotEmpty) {
+                                setState(() => isUploading = true); // Показываем загрузку
+                                for (var imageFile in images) {
+                                  String? imageUrl = await ImageKitService.uploadImage(imageFile); // Загружаем изображение
+                                  if (imageUrl != null) {
+                                    setState(() => updatedImages.add(imageUrl)); // Добавляем URL
+                                  } else {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text('Ошибка загрузки изображения'),
+                                        backgroundColor: Colors.redAccent,
+                                      ),
+                                    );
+                                  }
+                                }
+                                setState(() => isUploading = false); // Скрываем загрузку
+                              }
+                            },
+                            borderRadius: BorderRadius.circular(8),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(Icons.photo_library_outlined,
+                                    color: ProductDetailScreen.primaryColor, size: 24),
+                                SizedBox(width: 4),
+                                Text(
+                                  'Прикрепить фото',
+                                  style: TextStyle(
+                                    color: ProductDetailScreen.primaryColor,
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
                                   ),
                                 ),
-                              ),
-                            ],
-                          );
-                        }).toList(),
-                        // Кнопка для добавления новых изображений
-                        InkWell(
-                          onTap: () async {
-                            final images = await _pickImages(); // Выбор новых изображений
-                            if (images.isNotEmpty) {
-                              setState(() => isUploading = true); // Устанавливаем загрузку
-                              for (var imageFile in images) {
-                                String? imageUrl = await ImageKitService.uploadImage(imageFile); // Загрузка изображения
-                                if (imageUrl != null) {
-                                  setState(() => updatedImages.add(imageUrl)); // Добавляем новое изображение
-                                } else {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(
-                                      content: Text('Ошибка загрузки изображения'),
-                                      backgroundColor: Colors.redAccent,
-                                    ),
-                                  );
-                                }
-                              }
-                              setState(() => isUploading = false); // Завершаем загрузку
-                            }
-                          },
-                          child: Container(
-                            width: 70,
-                            height: 70,
-                            decoration: BoxDecoration(
-                              color: Colors.grey[800]?.withOpacity(0.5),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.grey[700]!, width: 1),
+                              ],
                             ),
-                            child: isUploading
-                                ? Center(
-                              child: CircularProgressIndicator(
-                                color: Colors.white70,
-                                strokeWidth: 2,
-                              ),
-                            )
-                                : Icon(Icons.add_a_photo_outlined,
-                                color: Colors.white70, size: 28),
                           ),
                         ),
                       ],
                     ),
+                    SizedBox(height: 16),
+
+                    // Превью прикрепленных изображений
+                    if (updatedImages.isNotEmpty)
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: updatedImages.map((url) {
+                            return Stack(
+                              alignment: Alignment.topRight,
+                              children: [
+                                _buildNetworkImage(url,
+                                    width: 70, height: 70, borderRadius: BorderRadius.circular(8)),
+                                Positioned(
+                                  top: -2,
+                                  right: -2,
+                                  child: InkWell(
+                                    onTap: () {
+                                      setState(() => updatedImages.remove(url)); // Удаляем изображение
+                                    },
+                                    child: CircleAvatar(
+                                      radius: 10,
+                                      backgroundColor: Colors.black.withOpacity(0.7),
+                                      child: Icon(Icons.close, color: Colors.white, size: 12),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            );
+                          }).toList(),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -2340,6 +2378,58 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       },
     );
   }
+  Future<bool> _isProductLiked() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return false;
+
+    final userId = user.uid;
+    final productId = _productData?['product_id'];
+    if (productId == null) return false;
+
+    final snapshot = await FirebaseFirestore.instance
+        .collection('isLiked')
+        .where('user_id', isEqualTo: userId)
+        .where('product_id', isEqualTo: productId)
+        .limit(1)
+        .get();
+
+    return snapshot.docs.isNotEmpty;
+  }
+  Future<void> _toggleLike() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Вы должны быть авторизованы.')),
+      );
+      return;
+    }
+
+    final userId = user.uid;
+    final productId = _productData?['product_id'];
+    if (productId == null) return;
+
+    final likeRef = FirebaseFirestore.instance.collection('isLiked');
+    final snapshot = await likeRef
+        .where('user_id', isEqualTo: userId)
+        .where('product_id', isEqualTo: productId)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isNotEmpty) {
+      // Если лайк уже существует, удаляем его
+      await likeRef.doc(snapshot.docs.first.id).delete();
+    } else {
+      // Если лайка нет, добавляем его
+      await likeRef.add({
+        'user_id': userId,
+        'product_id': productId,
+        'liked_at': FieldValue.serverTimestamp(),
+      });
+    }
+
+    setState(() {}); // Обновляем интерфейс
+  }
+
   @override
   Widget build(BuildContext context) {
     if (_isLoadingProduct)
@@ -2356,29 +2446,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     color: Colors.white, size: 20),
                 onPressed: () => Navigator.of(context).pop())),
       );
+    final double discountedPrice = _calculateDiscountedPrice();
+    final bool canAddToCart = _selectedSize != null &&
+        _selectedColor != null &&
+        _getMaxQuantity() > 0;
+
     if (_errorMessage != null)
       return Scaffold(
         backgroundColor: ProductDetailScreen.darkBg,
         body: Center(
             child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child:
+              padding: const EdgeInsets.all(16.0),
+              child:
               Text(_errorMessage!, style: TextStyle(color: Colors.redAccent)),
-        )),
-        appBar: AppBar(
-            elevation: 0,
-            backgroundColor: ProductDetailScreen.darkBg,
-            leading: IconButton(
-                icon: Icon(Icons.arrow_back_ios_new_rounded,
-                    color: Colors.white, size: 20),
-                onPressed: () => Navigator.of(context).pop())),
-      );
-    if (_productData == null)
-      return Scaffold(
-        backgroundColor: ProductDetailScreen.darkBg,
-        body: Center(
-            child:
-                Text("Товар не найден", style: TextStyle(color: Colors.grey))),
+            )),
         appBar: AppBar(
             elevation: 0,
             backgroundColor: ProductDetailScreen.darkBg,
@@ -2388,10 +2469,20 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                 onPressed: () => Navigator.of(context).pop())),
       );
 
-    final bool canAddToCart = _selectedSize != null &&
-        _selectedColor != null &&
-        _getMaxQuantity() > 0;
-    final double discountedPrice = _calculateDiscountedPrice();
+    if (_productData == null)
+      return Scaffold(
+        backgroundColor: ProductDetailScreen.darkBg,
+        body: Center(
+            child:
+            Text("Товар не найден", style: TextStyle(color: Colors.grey))),
+        appBar: AppBar(
+            elevation: 0,
+            backgroundColor: ProductDetailScreen.darkBg,
+            leading: IconButton(
+                icon: Icon(Icons.arrow_back_ios_new_rounded,
+                    color: Colors.white, size: 20),
+                onPressed: () => Navigator.of(context).pop())),
+      );
 
     return Scaffold(
       backgroundColor: ProductDetailScreen.darkBg,
@@ -2405,9 +2496,25 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         actions: [
+          FutureBuilder<bool>(
+            future: _isProductLiked(), // Проверяем, лайкнул ли пользователь товар
+            builder: (context, snapshot) {
+              final isLiked = snapshot.data ?? false; // По умолчанию false
+              return IconButton(
+                icon: Icon(
+                  isLiked ? Icons.favorite : Icons.favorite_border,
+                  color: isLiked ? Colors.redAccent : Colors.white,
+                ),
+                onPressed: () async {
+                  await _toggleLike(); // Переключаем лайк
+                },
+              );
+            },
+          ),
           IconButton(
-              onPressed: () {},
-              icon: Icon(Icons.favorite_border_rounded, color: Colors.white))
+            icon: Icon(Icons.share_outlined, color: Colors.white),
+            onPressed: _shareProduct, // Используем метод _shareProduct
+          ),
         ],
       ),
       resizeToAvoidBottomInset: true,

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:shop/firebase_service.dart'; // Убедись, что путь правильный
 import 'package:shop/screens/productListScreen.dart'; // Убедись, что путь правильный
 import 'package:shop/screens/profileScreen.dart'; // Убедись, что путь правильный
+import 'package:shop/screens/mapAddressPicker.dart'; // Убедись, что путь правильный
 // import 'dart:convert'; // Не используется напрямую в этом коде
 // import 'dart:typed_data'; // Не используется напрямую в этом коде
 import 'package:flutter/services.dart';
@@ -206,7 +208,7 @@ class _CartScreenState extends State<CartScreen> {
     _cartItemsFuture.then((items) {
       _calculateTotalPrice(items);
       if (mounted) {
-        setState(() {});
+        setState(() {}); // Перерисовка интерфейса
       }
     }).catchError((error) {
       print("Error loading cart items: $error");
@@ -245,9 +247,13 @@ class _CartScreenState extends State<CartScreen> {
       priceDouble = price;
     else
       priceDouble = 0.0;
+
     int rubles = priceDouble.toInt();
     int kopecks = ((priceDouble - rubles) * 100).round();
-    return kopecks == 0 ? '$rubles ₽' : '$rubles ₽ $kopecks коп.';
+
+    return kopecks == 0
+        ? '$rubles BYN'
+        : '$rubles.${kopecks.toString().padLeft(2, '0')} BYN';
   }
 
   Future<void> _removeFromCart(
@@ -299,27 +305,15 @@ class _CartScreenState extends State<CartScreen> {
   void _showPaymentDialog(
       double amount, String deliveryId, List<Map<String, dynamic>> cartItems) {
     final TextEditingController cardNumberController = TextEditingController();
-    final TextEditingController expirationDateController =
-        TextEditingController();
+    final TextEditingController expirationDateController = TextEditingController();
     final TextEditingController cvvController = TextEditingController();
     final FocusNode expirationFocusNode = FocusNode();
     final FocusNode cvvFocusNode = FocusNode();
 
-    // --- Логика предзаполнения карты ---
-    if (userData != null && userData!['card_token'] != null) {
-      String cardToken = userData!['card_token'];
-      String digitsOnly = cardToken.replaceAll(RegExp(r'\D'), '');
-      final buffer = StringBuffer();
-      for (int i = 0; i < digitsOnly.length; i++) {
-        if (i > 0 && i % 4 == 0) buffer.write(' ');
-        buffer.write(digitsOnly[i]);
-      }
-      String formattedToken = buffer.toString();
-      cardNumberController.text = formattedToken.length > 19
-          ? formattedToken.substring(0, 19)
-          : formattedToken;
-    }
-    // --- Конец логики предзаполнения ---
+    // Переменные для учета скидки
+    double updatedAmount = amount;
+    bool useLoyaltyPoints = false; // Переключатель
+    double loyaltyPoints = double.tryParse(userData?['loyalty_points'] ?? '0') ?? 0.0;
 
     showDialog(
       context: context,
@@ -338,64 +332,104 @@ class _CartScreenState extends State<CartScreen> {
                 hintStyle: TextStyle(color: Colors.grey[600]),
                 prefixIcon: prefixIcon != null
                     ? Padding(
-                        padding: const EdgeInsets.only(left: 12.0, right: 8.0),
-                        child: prefixIcon)
+                    padding: const EdgeInsets.only(left: 12.0, right: 8.0),
+                    child: prefixIcon)
                     : null,
                 suffixIcon: suffixIcon,
                 filled: true,
-                fillColor: Color(0xFF2a2a2e),
+                fillColor: const Color(0xFF2a2a2e),
                 contentPadding:
-                    EdgeInsets.symmetric(vertical: 15.0, horizontal: 12.0),
+                const EdgeInsets.symmetric(vertical: 15.0, horizontal: 12.0),
                 border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
                     borderSide: BorderSide.none),
                 enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
                     borderSide:
-                        BorderSide(color: Colors.grey[700]!, width: 1.0)),
+                    BorderSide(color: Colors.grey[700]!, width: 1.0)),
                 focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8.0),
                     borderSide:
-                        BorderSide(color: Color(0xFFEE3A57), width: 1.5)),
-                errorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                    borderSide:
-                        BorderSide(color: Colors.redAccent, width: 1.5)),
-                focusedErrorBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8.0),
-                    borderSide:
-                        BorderSide(color: Colors.redAccent, width: 1.5)),
-                counterText: "",
+                    const BorderSide(color: Color(0xFFEE3A57), width: 1.5)),
               );
             }
 
+            // Обновляем сумму с учетом баллов
+            void updateAmount() {
+              if (useLoyaltyPoints) {
+                updatedAmount =
+                    (amount - loyaltyPoints).clamp(0.0, double.infinity);
+              } else {
+                updatedAmount = amount;
+              }
+            }
+
             return AlertDialog(
-              backgroundColor: Color(0xFF1f1f24),
+              backgroundColor: const Color(0xFF1f1f24),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12.0)),
-              title: Text("Оплата картой",
-                  style: TextStyle(
-                      color: Colors.white, fontWeight: FontWeight.bold)),
+              title: const Text("Оплата картой",
+                  style:
+                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text("Сумма к оплате: ${formatPrice(amount)}",
-                        style:
-                            TextStyle(color: Colors.grey[300], fontSize: 16)),
-                    SizedBox(height: 20),
-                    // --- Поле номера карты ---
+                    // Сумма к оплате с учетом скидки
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Сумма к оплате:",
+                            style:
+                            TextStyle(color: Colors.grey, fontSize: 16)),
+                        Text(formatPrice(updatedAmount),
+                            style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                    const SizedBox(height: 15),
+
+                    // Переключатель "Списать баллы лояльности"
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text("Списать баллы:",
+                            style:
+                            TextStyle(color: Colors.grey, fontSize: 16)),
+                        Switch(
+                          value: useLoyaltyPoints,
+                          onChanged: (newValue) {
+                            setStateDialog(() {
+                              useLoyaltyPoints = newValue;
+                              updateAmount(); // Пересчитываем сумму
+                            });
+                          },
+                          activeColor: const Color(0xFFEE3A57),
+                        ),
+                      ],
+                    ),
+
+                    // Отображение текущих баллов
+                    if (loyaltyPoints > 0)
+                      Text("Ваши баллы: ${loyaltyPoints.toStringAsFixed(2)}",
+                          style: const TextStyle(
+                              color: Colors.grey, fontSize: 14)),
+                    const SizedBox(height: 20),
+
+                    // --- Поле ввода номера карты ---
                     TextFormField(
                         controller: cardNumberController,
-                        style: TextStyle(
+                        style: const TextStyle(
                             color: Colors.white,
                             fontSize: 16,
                             letterSpacing: 1.5),
                         decoration: inputDecoration(
                             "Номер карты", "0000 0000 0000 0000",
-                            prefixIcon: Icon(Icons.credit_card,
-                                color: Colors.grey[500], size: 22),
+                            prefixIcon: const Icon(Icons.credit_card,
+                                color: Colors.grey, size: 22),
                             suffixIcon: brandIcon),
                         keyboardType: TextInputType.number,
                         inputFormatters: [
@@ -404,147 +438,85 @@ class _CartScreenState extends State<CartScreen> {
                           CardNumberInputFormatter()
                         ],
                         onChanged: (value) {
-                          setStateDialog(() {}); // Обновить иконку
-                          if (value.length == 19) {
-                            FocusScope.of(context)
-                                .requestFocus(expirationFocusNode);
-                          }
-                        },
-                        autovalidateMode: AutovalidateMode.onUserInteraction,
-                        validator: (value) {
-                          if (value == null ||
-                              value.replaceAll(" ", "").length != 16)
-                            return 'Введите 16 цифр';
-                          return null;
+                          setStateDialog(() {});
                         }),
-                    SizedBox(height: 15),
+                    const SizedBox(height: 15),
+
+                    // --- Срок действия и CVV ---
                     // --- Срок действия и CVV ---
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.start, // Это важно для выравнивания по верху
                       children: [
                         Expanded(
                           child: TextFormField(
-                              controller: expirationDateController,
-                              focusNode: expirationFocusNode,
-                              style:
-                                  TextStyle(color: Colors.white, fontSize: 16),
-                              decoration: inputDecoration("ММ/ГГ", "12/28",
-                                  prefixIcon: Icon(Icons.calendar_today,
-                                      color: Colors.grey[500], size: 20)),
-                              keyboardType: TextInputType.number,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly,
-                                LengthLimitingTextInputFormatter(4),
-                                ExpirationDateInputFormatter()
-                              ],
-                              onChanged: (value) {
-                                if (value.length == 5) {
-                                  FocusScope.of(context)
-                                      .requestFocus(cvvFocusNode);
-                                }
-                              },
-                              autovalidateMode:
-                                  AutovalidateMode.onUserInteraction,
-                              validator: (value) {
-                                if (value == null || value.length != 5)
-                                  return 'MM/ГГ';
-                                final RegExp format =
-                                    RegExp(r'^(0[1-9]|1[0-2])\/\d{2}$');
-                                if (!format.hasMatch(value)) return 'Неверно';
-                                final parts = value.split('/');
-                                final month = int.tryParse(parts[0]);
-                                final year = int.tryParse(parts[1]);
-                                if (month == null || year == null)
-                                  return 'Ошибка';
-                                final now = DateTime.now();
-                                final currentYearLastTwoDigits = now.year % 100;
-                                if (year < currentYearLastTwoDigits ||
-                                    (year == currentYearLastTwoDigits &&
-                                        month < now.month)) return 'Истек';
-                                return null;
-                              }),
+                            controller: expirationDateController,
+                            focusNode: expirationFocusNode,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 16),
+                            decoration: inputDecoration(
+                              "ММ/ГГ",
+                              "12/28",
+                              prefixIcon: const Icon(Icons.calendar_today, color: Colors.grey, size: 22), // Дополнительно, если нужно
+                            ),
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(4),
+                              ExpirationDateInputFormatter()
+                            ],
+                          ),
                         ),
-                        SizedBox(width: 15),
+                        const SizedBox(width: 15),
                         Expanded(
                           child: TextFormField(
-                              controller: cvvController,
-                              focusNode: cvvFocusNode,
-                              obscureText: true,
-                              style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                  letterSpacing: 2.0),
-                              decoration: inputDecoration("CVV", "•••",
-                                  prefixIcon: Icon(Icons.lock_outline,
-                                      color: Colors.grey[500], size: 20)),
-                              keyboardType: TextInputType.number,
-                              maxLength: 3,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.digitsOnly
-                              ],
-                              autovalidateMode:
-                                  AutovalidateMode.onUserInteraction,
-                              validator: (value) {
-                                if (value == null || value.length != 3)
-                                  return '3 цифры';
-                                return null;
-                              }),
+                            controller: cvvController,
+                            focusNode: cvvFocusNode,
+                            obscureText: true,
+                            style: const TextStyle(
+                                color: Colors.white, fontSize: 16),
+                            decoration: inputDecoration(
+                              "CVV",
+                              "•••",
+                              prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey, size: 22), // Дополнительно, если нужно
+                            ),
+                            keyboardType: TextInputType.number,
+                            maxLength: 3,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly
+                            ],
+                          ),
                         ),
                       ],
                     ),
                   ],
                 ),
               ),
-              actionsPadding: EdgeInsets.fromLTRB(16.0, 0, 16.0, 12.0),
-              actionsAlignment: MainAxisAlignment.end,
               actions: [
                 TextButton(
                   onPressed: () {
                     Navigator.of(context).pop();
                   },
-                  style: TextButton.styleFrom(
-                      foregroundColor: Colors.grey[400],
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 15, vertical: 10)),
-                  child: Text("Отмена"),
+                  child: const Text("Отмена",
+                      style: TextStyle(color: Colors.grey)),
                 ),
-                SizedBox(width: 8),
                 ElevatedButton.icon(
-                  icon: Icon(Icons.verified_user_outlined, size: 18),
-                  label: Text("Оплатить ${formatPrice(amount)}"),
+                  icon: const Icon(Icons.verified_user_outlined, size: 18),
+                  label: Text("Оплатить ${formatPrice(updatedAmount)}"),
                   onPressed: () {
-                    if (_validatePaymentFields(cardNumberController.text,
-                        expirationDateController.text, cvvController.text)) {
-                      print("Данные карты введены корректно (имитация)...");
+                    if (updatedAmount > 0) {
+                      // Подтверждаем заказ с учетом скидки
                       Navigator.of(context).pop();
-                      _confirmOrder(deliveryId, cartItems);
+                      _confirmOrder(
+                          deliveryId, cartItems, useLoyaltyPoints, loyaltyPoints);
                     } else {
-                      // --- ИЗМЕНЕНИЕ ЗДЕСЬ ---
+                      // Сумма равна 0, просто обнуляем баллы
+                      FirebaseService().updateUserData({'loyalty_points': "0"});
+                      Navigator.of(context).pop();
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                        content: Text(
-                            'Данные карты неверны. Проверьте выделенные поля.'),
-                        backgroundColor: Colors.redAccent,
-                        behavior: SnackBarBehavior.floating,
-                        // Поднимаем SnackBar выше (значение 0.35 - для примера, подбери свое)
-                        margin: EdgeInsets.only(
-                            bottom: MediaQuery.of(context).size.height *
-                                0.35, // <--- УВЕЛИЧЕННЫЙ ОТСТУП
-                            left: 15,
-                            right: 15),
-                        duration: Duration(seconds: 3), // Увеличим время показа
-                      ));
-                      // --- КОНЕЦ ИЗМЕНЕНИЯ ---
-                      HapticFeedback.mediumImpact();
+                          content: const Text('Оплата успешно завершена'),
+                          backgroundColor: Colors.green));
                     }
                   },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Color(0xFFEE3A57),
-                    foregroundColor: Colors.white,
-                    padding: EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8.0)),
-                    elevation: 2,
-                  ),
                 ),
               ],
             );
@@ -553,6 +525,7 @@ class _CartScreenState extends State<CartScreen> {
       },
     );
   }
+
 
   // ==============================================================
   // !!! ОБНОВЛЕННАЯ ФУНКЦИЯ ВАЛИДАЦИИ !!!
@@ -599,46 +572,76 @@ class _CartScreenState extends State<CartScreen> {
     return true;
   }
 
-  // Финальное подтверждение и создание заказа в Firebase
-  Future<void> _confirmOrder(
-      String deliveryId, List<Map<String, dynamic>> cartItems) async {
-    print("Confirming order...");
+  Future<void> _confirmOrder(String deliveryId, List<Map<String, dynamic>> cartItems,
+      bool useLoyaltyPoints, double loyaltyPoints) async {
+    print("Подтверждение заказа...");
     showDialog(
         context: context,
         barrierDismissible: false,
         builder: (BuildContext context) {
-          /* Индикатор загрузки */
           return Dialog(
-              backgroundColor: Color(0xFF1f1f24),
+              backgroundColor: const Color(0xFF1f1f24),
               child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 20.0),
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  child: Column(mainAxisSize: MainAxisSize.min, children: const [
                     CircularProgressIndicator(color: Color(0xFFEE3A57)),
                     SizedBox(height: 15),
                     Text("Обработка заказа...",
                         style: TextStyle(color: Colors.white))
                   ])));
         });
+
     try {
-      await FirebaseService().placeOrder(cartItems, _totalPrice, deliveryId);
-      print('Order placed successfully.');
-      Navigator.of(context).pop(); // Закрываем индикатор
+      // Если баллы используются, обнуляем их
+      if (useLoyaltyPoints) {
+        await FirebaseService().updateUserData({'loyalty_points': "0"});
+        print("Баллы лояльности списаны.");
+      }
+
+      // Рассчитываем итоговую сумму с учетом скидки
+      double finalPrice = _totalPrice - (useLoyaltyPoints ? loyaltyPoints : 0);
+      finalPrice = finalPrice.clamp(0.0, double.infinity); // Убеждаемся, что сумма >= 0
+
+      // Создаем заказ
+      await FirebaseService().placeOrder(cartItems, finalPrice, deliveryId);
+
+      // Обновляем запасы товаров в Firestore
+      for (var item in cartItems) {
+        final productId = item['product_id'];
+        final selectedSize = item['selected_size'];
+        final selectedColor = item['selected_color'];
+        final quantityBought = item['quantity'];
+
+        // Обновляем количество для конкретного размера и цвета
+        await FirebaseService().updateProductStock(
+          productId,
+          selectedSize,
+          selectedColor,
+          -quantityBought, // Уменьшаем количество
+        );
+      }
+
+      // Очищаем корзину
+      await FirebaseService().clearCart();
+
+      print('Заказ успешно оформлен.');
+      Navigator.of(context).pop(); // Закрываем индикатор загрузки
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Заказ успешно оформлен!'),
+            content: const Text('Заказ успешно оформлен!'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating));
-        _loadCartData();
+        _loadCartData(); // Перезагружаем данные корзины
         setState(() {
           _selectedDeliveryId = null;
         });
       }
     } catch (e) {
-      Navigator.of(context).pop(); // Закрываем индикатор
-      print('Error placing order: $e');
+      Navigator.of(context).pop(); // Закрываем индикатор загрузки
+      print('Ошибка оформления заказа: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-            content: Text('Ошибка при оформлении заказа: Попробуйте снова.'),
+            content: const Text('Ошибка при оформлении заказа. Попробуйте снова.'),
             backgroundColor: Colors.red,
             behavior: SnackBarBehavior.floating));
       }
@@ -670,7 +673,20 @@ class _CartScreenState extends State<CartScreen> {
         break;
     }
   }
-
+  Future<void> _updateCartItemQuantity(String docId, int newQuantity) async {
+    print('Обновление количества: docId=$docId, newQuantity=$newQuantity');
+    try {
+      await FirebaseService().updateCartItem(docId, {'quantity': newQuantity});
+      print('Количество обновлено в Firestore.');
+      _loadCartData(); // Перезагрузка корзины
+    } catch (e) {
+      print('Ошибка обновления количества: $e');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('Ошибка обновления количества'),
+        backgroundColor: Colors.redAccent,
+      ));
+    }
+  }
   // ==============================================================
   // Метод Build виджета CartScreen
   // ==============================================================
@@ -747,108 +763,161 @@ class _CartScreenState extends State<CartScreen> {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 8.0),
                 child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: _deliveryAddressesFuture,
-                  builder: (context, deliverySnapshot) {
-                    // ... (Код отображения адресов без изменений) ...
-                    if (deliverySnapshot.connectionState ==
-                        ConnectionState.waiting) {
+                  future: FirebaseService().getAllDeliveryAddresses(), // Загружаем все адреса
+                  builder: (context, snapshot) {
+                    if (snapshot.connectionState == ConnectionState.waiting) {
                       return Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 15.0, horizontal: 12.0),
-                          decoration: BoxDecoration(
-                              color: Color(0xFF2a2a2e),
-                              borderRadius: BorderRadius.circular(8.0)),
-                          child: Row(children: [
-                            SizedBox(
-                                width: 15,
-                                height: 15,
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.grey[400])),
-                            SizedBox(width: 12),
-                            Text("Загрузка адресов...",
-                                style: TextStyle(color: Colors.grey[400]))
-                          ]));
-                    } else if (deliverySnapshot.hasError) {
+                        padding: const EdgeInsets.symmetric(vertical: 15.0, horizontal: 12.0),
+                        decoration: BoxDecoration(
+                            color: const Color(0xFF2a2a2e),
+                            borderRadius: BorderRadius.circular(8.0)),
+                        child: Row(children: [
+                          SizedBox(
+                              width: 15,
+                              height: 15,
+                              child: CircularProgressIndicator(
+                                  strokeWidth: 2, color: Colors.grey[400])),
+                          const SizedBox(width: 12),
+                          const Text("Загрузка адресов...",
+                              style: TextStyle(color: Colors.grey))
+                        ]),
+                      );
+                    } else if (snapshot.hasError) {
                       return Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 15.0, horizontal: 12.0),
-                          decoration: BoxDecoration(
-                              color: Color(0xFF2a2a2e),
-                              borderRadius: BorderRadius.circular(8.0),
-                              border: Border.all(color: Colors.redAccent)),
-                          child: Text('Ошибка загрузки адресов',
-                              style: TextStyle(color: Colors.redAccent)));
-                    } else if (!deliverySnapshot.hasData ||
-                        deliverySnapshot.data!.isEmpty) {
+                        padding: const EdgeInsets.symmetric(vertical: 15.0, horizontal: 12.0),
+                        decoration: BoxDecoration(
+                            color: const Color(0xFF2a2a2e),
+                            borderRadius: BorderRadius.circular(8.0),
+                            border: Border.all(color: Colors.redAccent)),
+                        child: const Text('Ошибка загрузки адресов',
+                            style: TextStyle(color: Colors.redAccent)),
+                      );
+                    } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
                       return Container(
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 15.0, horizontal: 12.0),
-                          decoration: BoxDecoration(
-                              color: Color(0xFF2a2a2e).withOpacity(0.7),
-                              borderRadius: BorderRadius.circular(8.0)),
-                          alignment: Alignment.centerLeft,
-                          child: Row(children: [
-                            Icon(Icons.location_off_outlined,
-                                color: Colors.grey[500], size: 18),
-                            SizedBox(width: 8),
-                            Expanded(
-                                child: Text('Нет сохраненных адресов доставки',
-                                    style: TextStyle(color: Colors.grey[400])))
-                          ]));
+                        padding: const EdgeInsets.symmetric(vertical: 15.0, horizontal: 12.0),
+                        decoration: BoxDecoration(
+                            color: const Color(0xFF2a2a2e).withOpacity(0.7),
+                            borderRadius: BorderRadius.circular(8.0)),
+                        alignment: Alignment.centerLeft,
+                        child: Row(children: const [
+                          Icon(Icons.location_off_outlined,
+                              color: Colors.grey, size: 18),
+                          SizedBox(width: 8),
+                          Expanded(
+                              child: Text('Нет доступных адресов',
+                                  style: TextStyle(color: Colors.grey)))
+                        ]),
+                      );
                     }
-                    final addresses = deliverySnapshot.data!;
-                    return Container(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: 12.0, vertical: 5.0),
-                      decoration: BoxDecoration(
-                          color: Color(0xFF2a2a2e),
-                          borderRadius: BorderRadius.circular(8.0),
-                          border: Border.all(
-                              color: _selectedDeliveryId == null
-                                  ? Colors.grey[700]!
-                                  : Color(0xFFEE3A57),
-                              width: 1.0)),
-                      child: DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          isExpanded: true,
-                          hint: Text('Выберите адрес доставки',
-                              style: TextStyle(color: Colors.grey[400])),
-                          value: _selectedDeliveryId,
-                          dropdownColor: Color(0xFF2a2a2e),
-                          style: TextStyle(color: Colors.white, fontSize: 16),
-                          icon: Icon(Icons.arrow_drop_down,
-                              color: Colors.grey[400]),
-                          onChanged: (String? newValue) {
-                            setState(() {
-                              _selectedDeliveryId = newValue;
-                            });
-                          },
-                          items: addresses
-                              .map<DropdownMenuItem<String>>((address) {
-                            return DropdownMenuItem<String>(
-                                value: address['doc_id'],
-                                child: Text(
-                                    address['delivery_address'] ??
-                                        'Адрес не указан',
-                                    overflow: TextOverflow.ellipsis));
-                          }).toList(),
+
+                    final addresses = snapshot.data!;
+
+                    return Row(
+                      children: [
+                        // Выпадающий список для выбора адреса
+                        Expanded(
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 5.0),
+                            decoration: BoxDecoration(
+                                color: const Color(0xFF2a2a2e),
+                                borderRadius: BorderRadius.circular(8.0),
+                                border: Border.all(
+                                    color: _selectedDeliveryId == null
+                                        ? Colors.grey[700]!
+                                        : const Color(0xFFEE3A57),
+                                    width: 1.0)),
+                            child: DropdownButtonHideUnderline(
+                              child: DropdownButton<String>(
+                                isExpanded: true,
+                                hint: Text('Выберите адрес доставки',
+                                    style: TextStyle(color: Colors.grey[400])),
+                                value: _selectedDeliveryId,
+                                dropdownColor: const Color(0xFF2a2a2e),
+                                style: const TextStyle(color: Colors.white, fontSize: 16),
+                                icon: Icon(Icons.arrow_drop_down,
+                                    color: Colors.grey[400]),
+                                onChanged: (String? newValue) {
+                                  setState(() {
+                                    _selectedDeliveryId = newValue; // Сохраняем выбранный адрес
+                                  });
+                                },
+                                items: addresses.map<DropdownMenuItem<String>>((address) {
+                                  return DropdownMenuItem<String>(
+                                    value: address['doc_id'],
+                                    child: Text(
+                                      address['delivery_address'] ?? 'Без названия',
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  );
+                                }).toList(),
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                        const SizedBox(width: 8),
+                        // Кнопка для открытия карты
+                        GestureDetector(
+                          onTap: () async {
+                            final LatLng? selectedLocation = await Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => MapAddressPicker(),
+                              ),
+                            );
+
+                            if (selectedLocation != null) {
+                              setState(() {
+                                // Находим адрес, соответствующий координатам, и устанавливаем его как выбранный
+                                final selectedAddress = addresses.firstWhere(
+                                      (address) =>
+                                  address['latitude'] == selectedLocation.latitude &&
+                                      address['longitude'] == selectedLocation.longitude,
+                                  orElse: () => {}, // Возвращаем пустую карту вместо null
+                                );
+
+                                if (selectedAddress.isNotEmpty) {
+                                  _selectedDeliveryId = selectedAddress['doc_id'];
+                                }
+                              });
+                            }
+                          },
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFF2a2a2e),
+                              borderRadius: BorderRadius.circular(8.0),
+                              border: Border.all(color: Colors.grey[700]!),
+                            ),
+                            padding: const EdgeInsets.all(10.0),
+                            child: const Icon(Icons.map_outlined, color: Colors.white, size: 24),
+                          ),
+                        ),
+                      ],
                     );
                   },
                 ),
               ),
 
               // --- Список Товаров ---
+              // --- Список Товаров ---
               Expanded(
                 child: ListView.builder(
-                  padding:
-                      EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 90),
+                  padding: EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 90),
                   itemCount: cartItems.length,
                   itemBuilder: (context, index) {
-                    // ... (Код отображения товара в Card без изменений) ...
                     final item = cartItems[index];
                     final docId = item['docId'];
+                    final maxQuantity = item['available_quantity'] ?? 1; // Максимальное количество товара
+                    final currentQuantity = item['quantity'] ?? 1;
+                    // !!! ДОБАВЬТЕ ЭТОТ PRINT !!!
+                    print('--- Item Build ---');
+                    print('Name: ${item['name']}');
+                    print('Doc ID: $docId');
+                    print('Current Quantity: $currentQuantity (type: ${currentQuantity.runtimeType})');
+                    print('Max Quantity: $maxQuantity (type: ${maxQuantity.runtimeType})');
+                    print('Condition for '+': ${currentQuantity < maxQuantity}');
+                    print('------------------');
+
+
                     return Card(
                       margin: EdgeInsets.symmetric(vertical: 6.0),
                       color: Color(0xFF1f1f24),
@@ -862,37 +931,88 @@ class _CartScreenState extends State<CartScreen> {
                             children: [
                               Expanded(
                                   child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
+                                      crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                    Text(item['name'] ?? 'Название товара',
-                                        style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 17,
-                                            fontWeight: FontWeight.w600)),
-                                    SizedBox(height: 6),
-                                    Text(
-                                        'Размер: ${item['selected_size'] ?? '-'}',
-                                        style: TextStyle(
-                                            color: Colors.grey[400],
-                                            fontSize: 14)),
-                                    SizedBox(height: 4),
-                                    Text('Кол-во: ${item['quantity'] ?? 1}',
-                                        style: TextStyle(
-                                            color: Colors.grey[400],
-                                            fontSize: 14)),
-                                    SizedBox(height: 8),
-                                    Text(formatPrice(item['price'] ?? 0),
-                                        style: TextStyle(
-                                            color: Colors.white,
-                                            fontSize: 16,
-                                            fontWeight: FontWeight.bold)),
-                                  ])),
+                                        Text(item['name'] ?? 'Название товара',
+                                            style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 17,
+                                                fontWeight: FontWeight.w600)),
+                                        SizedBox(height: 6),
+                                        Text(
+                                            'Размер: ${item['selected_size'] ?? '-'}',
+                                            style: TextStyle(
+                                                color: Colors.grey[400], fontSize: 14)),
+                                        SizedBox(height: 8),
+                                        // --- Элемент выбора количества ---
+                                        // В методе build, внутри ListView.builder, замените Row с кнопками на это:
+                                        Row(
+                                          mainAxisAlignment: MainAxisAlignment.start,
+                                          children: [
+                                            // Кнопка уменьшения количества
+                                            GestureDetector(
+                                              onTap: currentQuantity > 1
+                                                  ? () async {
+                                                print('Нажата кнопка "-" для docId: $docId');
+                                                await _updateCartItemQuantity(docId, currentQuantity - 1);
+                                              }
+                                                  : null,
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  color: currentQuantity > 1 ? const Color(0xFF2a2a2e) : const Color(0xFF1f1f24),
+                                                  borderRadius: BorderRadius.circular(8.0),
+                                                ),
+                                                padding: const EdgeInsets.all(8.0),
+                                                child: Icon(
+                                                  Icons.remove,
+                                                  color: currentQuantity > 1 ? Colors.white : Colors.grey,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            // Текущее количество
+                                            Text(
+                                              '$currentQuantity',
+                                              style: const TextStyle(
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold,
+                                                color: Colors.white,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            // Кнопка увеличения количества
+                                            GestureDetector(
+                                              onTap: currentQuantity < maxQuantity
+                                                  ? () async {
+                                                print('Нажата кнопка "+" для docId: $docId');
+                                                await _updateCartItemQuantity(docId, currentQuantity + 1);
+                                              }
+                                                  : null,
+                                              child: Container(
+                                                decoration: BoxDecoration(
+                                                  color: currentQuantity < maxQuantity ? const Color(0xFF2a2a2e) : const Color(0xFF1f1f24),
+                                                  borderRadius: BorderRadius.circular(8.0),
+                                                ),
+                                                padding: const EdgeInsets.all(8.0),
+                                                child: Icon(
+                                                  Icons.add,
+                                                  color: currentQuantity < maxQuantity ? Colors.white : Colors.grey,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        SizedBox(height: 8),
+                                        Text(formatPrice(item['price'] ?? 0),
+                                            style: TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                fontWeight: FontWeight.bold)),
+                                      ])),
                               SizedBox(width: 10),
                               IconButton(
                                 icon: Icon(Icons.delete_outline,
-                                    color: Colors.redAccent[100]
-                                        ?.withOpacity(0.8)),
+                                    color: Colors.redAccent[100]?.withOpacity(0.8)),
                                 tooltip: "Удалить из корзины",
                                 padding: EdgeInsets.zero,
                                 constraints: BoxConstraints(),
@@ -903,15 +1023,11 @@ class _CartScreenState extends State<CartScreen> {
                                         builder: (BuildContext ctx) {
                                           /* Диалог подтверждения удаления */
                                           return AlertDialog(
-                                              backgroundColor:
-                                                  Color(0xFF1f1f24),
+                                              backgroundColor: Color(0xFF1f1f24),
                                               shape: RoundedRectangleBorder(
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          12)),
+                                                  borderRadius: BorderRadius.circular(12)),
                                               title: Text('Удалить товар?',
-                                                  style: TextStyle(
-                                                      color: Colors.white)),
+                                                  style: TextStyle(color: Colors.white)),
                                               content: Text(
                                                   'Удалить "${item['name']}" (${item['selected_size']}) из корзины?',
                                                   style: TextStyle(
@@ -920,33 +1036,22 @@ class _CartScreenState extends State<CartScreen> {
                                                 TextButton(
                                                     child: Text('Отмена',
                                                         style: TextStyle(
-                                                            color:
-                                                                Colors.grey)),
+                                                            color: Colors.grey)),
                                                     onPressed: () =>
-                                                        Navigator.of(ctx)
-                                                            .pop()),
+                                                        Navigator.of(ctx).pop()),
                                                 TextButton(
                                                     child: Text('Удалить',
                                                         style: TextStyle(
-                                                            color: Colors
-                                                                .redAccent)),
+                                                            color: Colors.redAccent)),
                                                     onPressed: () {
                                                       Navigator.of(ctx).pop();
-                                                      _removeFromCart(
-                                                          docId, item);
+                                                      _removeFromCart(docId, item);
                                                     })
                                               ]);
                                         });
                                   } else {
                                     print(
                                         "Error: docId is null for item ${item['name']}");
-                                    ScaffoldMessenger.of(context)
-                                        .showSnackBar(SnackBar(
-                                      content: Text(
-                                          'Не удалось удалить товар: отсутствует ID.'),
-                                      backgroundColor: Colors.red,
-                                      behavior: SnackBarBehavior.floating,
-                                    ));
                                   }
                                 },
                               ),
