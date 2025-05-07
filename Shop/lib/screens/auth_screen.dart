@@ -13,10 +13,10 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      debugShowCheckedModeBanner: false,  // Отключение баннера DEBUG
+      debugShowCheckedModeBanner: false,
       home: AuthScreen(),
       routes: {
-        '/products': (context) => ProductListScreen(), // Зарегистрируйте маршрут
+        '/products': (context) => ProductListScreen(),
       },
     );
   }
@@ -31,7 +31,7 @@ class AuthScreen extends StatefulWidget {
 
 class _AuthScreenState extends State<AuthScreen> {
   bool isLogin = true;
-  bool rememberMe = false; // Флаг для кнопки "Запомнить меня"
+  bool rememberMe = false;
   final FirebaseService firebaseService = FirebaseService();
 
   final TextEditingController emailController = TextEditingController();
@@ -42,7 +42,6 @@ class _AuthScreenState extends State<AuthScreen> {
   bool _isPasswordVisible = false;
   bool _isConfirmPasswordVisible = false;
 
-  // Focus nodes
   final FocusNode emailFocusNode = FocusNode();
   final FocusNode passwordFocusNode = FocusNode();
   final FocusNode usernameFocusNode = FocusNode();
@@ -66,17 +65,18 @@ class _AuthScreenState extends State<AuthScreen> {
     super.initState();
     _loadRememberedUser();
   }
+
   void _navigateToProducts() {
-    Navigator.pushReplacementNamed(context, '/products'); // Убедитесь, что маршрут настроен
+    Navigator.pushReplacementNamed(context, '/products');
   }
-  // Загрузка сохраненного пользователя
+
   void _loadRememberedUser() async {
     final prefs = await SharedPreferences.getInstance();
     final savedEmail = prefs.getString('email');
     if (savedEmail != null && savedEmail.isNotEmpty) {
       emailController.text = savedEmail;
       setState(() {
-        rememberMe = true; // Если email сохранен, значит, выбрана опция "Запомнить меня"
+        rememberMe = true;
       });
     }
   }
@@ -84,55 +84,55 @@ class _AuthScreenState extends State<AuthScreen> {
   void _saveUserCredentials() async {
     final prefs = await SharedPreferences.getInstance();
     if (rememberMe) {
-      prefs.setString('email', emailController.text);  // Сохраняем email только если "Запомнить меня" выбрано
+      prefs.setString('email', emailController.text);
     } else {
-      prefs.remove('email');  // Удаляем email если "Запомнить меня" не выбрано
+      prefs.remove('email');
     }
   }
+
   void _showResetPasswordDialog() {
     final _emailController = TextEditingController();
-
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          backgroundColor: Color(0xFF18171c), // Фон диалога
+          backgroundColor: Color(0xFF18171c),
           title: Text(
             'Сброс пароля',
-            style: TextStyle(color: Colors.white), // Цвет заголовка
+            style: TextStyle(color: Colors.white),
           ),
           content: TextField(
             controller: _emailController,
             decoration: InputDecoration(
               labelText: 'Введите ваш email',
-              labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)), // Цвет текста
+              labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
               filled: true,
-              fillColor: Color(0xFF1F1F1F), // Цвет фона поля ввода
+              fillColor: Color(0xFF1F1F1F),
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20), // Закругление углов
+                borderRadius: BorderRadius.circular(20),
                 borderSide: BorderSide(color: Color(0xFF7B4B7F)),
               ),
             ),
-            style: TextStyle(color: Colors.white), // Цвет текста в поле
+            style: TextStyle(color: Colors.white),
           ),
           actions: [
             TextButton(
               onPressed: () {
-                Navigator.of(context).pop(); // Закрываем диалог
+                Navigator.of(context).pop();
               },
               child: Text(
                 'Отмена',
-                style: TextStyle(color: Colors.white), // Цвет текста кнопки
+                style: TextStyle(color: Colors.white),
               ),
             ),
             TextButton(
               onPressed: () async {
                 await firebaseService.resetPassword(_emailController.text);
-                Navigator.of(context).pop(); // Закрываем диалог
+                Navigator.of(context).pop();
               },
               child: Text(
                 'Отправить',
-                style: TextStyle(color: Colors.white), // Цвет текста кнопки
+                style: TextStyle(color: Colors.white),
               ),
             ),
           ],
@@ -140,177 +140,195 @@ class _AuthScreenState extends State<AuthScreen> {
       },
     );
   }
+
   @override
   Widget build(BuildContext context) {
     final onAuth = isLogin
         ? () async {
-      await firebaseService.onLogin(email: emailController.text, password: passwordController.text);
-      if (rememberMe) {
-        _saveUserCredentials(); // Сохранение данных, если "Запомнить меня" выбрано
-      }
-    }
-        : () {
-      if (passwordController.text != confirmPasswordController.text) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text('Passwords do not match!'),
-        ));
-      } else {
-        firebaseService.onRegister(
+      try {
+        await firebaseService.onLogin(
           email: emailController.text,
           password: passwordController.text,
-          username: usernameController.text,
         );
+        if (rememberMe) {
+          _saveUserCredentials();
+        }
+
+        _navigateToProducts();
+      } catch (e) {
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.toString(), style: TextStyle(color: Colors.white))),
+        );
+      }
+    }
+        : () async {
+      if (passwordController.text != confirmPasswordController.text) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Пароли не совпадают!', style: TextStyle(color: Colors.white))),
+        );
+      } else {
+        try {
+          await firebaseService.onRegister(
+            email: emailController.text,
+            password: passwordController.text,
+            username: usernameController.text,
+          );
+
+          _navigateToProducts();
+        } catch (e) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(e.toString(), style: TextStyle(color: Colors.white))),
+          );
+        }
       }
     };
 
-    final buttonText = isLogin ? 'Log in' : 'Sign up';
+    final buttonText = isLogin ? 'Авторизация' : 'Регистрация';
+
+    final inputDecoration = InputDecoration(
+      contentPadding: EdgeInsets.symmetric(vertical: 18, horizontal: 20),
+      labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
+      filled: true,
+      fillColor: Color(0xFF1F1F1F),
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(20),
+        borderSide: BorderSide(color: Color(0xFF7B4B7F)),
+      ),
+    );
+
     return Scaffold(
-        resizeToAvoidBottomInset: true,
-        backgroundColor: Color(0xFF18171c),
-        appBar: AppBar(
-          backgroundColor: Colors.transparent,
-          elevation: 0,
-          automaticallyImplyLeading: false,
-        ),
-        body: SafeArea(
+      resizeToAvoidBottomInset: true,
+      backgroundColor: Color(0xFF18171c),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        automaticallyImplyLeading: false,
+      ),
+      body: SafeArea(
+        child: Center(
           child: SingleChildScrollView(
             padding: const EdgeInsets.all(16.0),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  isLogin ? 'Log in' : 'Sign up',
+                  isLogin ? 'Авторизация' : 'Регистрация',
                   style: TextStyle(
                     color: Colors.white,
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                SizedBox(height: 30),
-                // Username field (visible for registration)
-                if (!isLogin)
-                  TextField(
-                    controller: usernameController,
-                    focusNode: usernameFocusNode,
-                    decoration: InputDecoration(
-                      labelText: 'Username',
-                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                      filled: true,
-                      fillColor: Color(0xFF1F1F1F),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide(color: Color(0xFF7B4B7F)),
-                      ),
-                    ),
-                    style: TextStyle(color: Colors.white),
-                  ),
-                SizedBox(height: 30),
-                // Email field
-                TextField(
-                  controller: emailController,
-                  focusNode: emailFocusNode,
-                  decoration: InputDecoration(
-                    labelText: 'Email',
-                    labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                    filled: true,
-                    fillColor: Color(0xFF1F1F1F),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide(color: Color(0xFF7B4B7F)),
-                    ),
-                  ),
-                  style: TextStyle(color: Colors.white),
-                ),
-                SizedBox(height: 30),
-                // Password field
-                TextField(
-                  controller: passwordController,
-                  focusNode: passwordFocusNode,
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                    filled: true,
-                    fillColor: Color(0xFF1F1F1F),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(20),
-                      borderSide: BorderSide(color: Color(0xFF7B4B7F)),
-                    ),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
-                        color: Colors.white,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _isPasswordVisible = !_isPasswordVisible; // Переключаем видимость пароля
-                        });
-                      },
-                    ),
-                  ),
-                  style: TextStyle(color: Colors.white),
-                  obscureText: !_isPasswordVisible, // Скрываем текст, если флаг установлен
-                ),
-                SizedBox(height: 10),
-                // Reset Password button
-                if (isLogin) // Показывать кнопку только для входа
-                  TextButton(
-                    onPressed: _showResetPasswordDialog, // Метод для отображения диалогового окна сброса пароля
-                    child: Text(
-                      'Forget your password?',
+                SizedBox(height: 32),
+                if (!isLogin) ...[
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextField(
+                      controller: usernameController,
+                      focusNode: usernameFocusNode,
+                      decoration: inputDecoration.copyWith(labelText: 'Имя'),
                       style: TextStyle(color: Colors.white),
                     ),
                   ),
-                SizedBox(height: 30),
-                // Confirm Password field (only for registration)
-                if (!isLogin)
-                  TextField(
-                    controller: confirmPasswordController,
-                    focusNode: confirmPasswordFocusNode,
-                    decoration: InputDecoration(
-                      labelText: 'Confirm Password',
-                      labelStyle: TextStyle(color: Colors.white.withOpacity(0.5)),
-                      filled: true,
-                      fillColor: Color(0xFF1F1F1F),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                        borderSide: BorderSide(color: Color(0xFF7B4B7F)),
-                      ),
+                  SizedBox(height: 20),
+                ],
+                SizedBox(
+                  width: double.infinity,
+                  child: TextField(
+                    controller: emailController,
+                    focusNode: emailFocusNode,
+                    decoration: inputDecoration.copyWith(labelText: 'Email'),
+                    style: TextStyle(color: Colors.white),
+                  ),
+                ),
+                SizedBox(height: 20),
+                SizedBox(
+                  width: double.infinity,
+                  child: TextField(
+                    controller: passwordController,
+                    focusNode: passwordFocusNode,
+                    decoration: inputDecoration.copyWith(
+                      labelText: 'Пароль',
                       suffixIcon: IconButton(
                         icon: Icon(
-                          _isConfirmPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                          _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
                           color: Colors.white,
                         ),
                         onPressed: () {
                           setState(() {
-                            _isConfirmPasswordVisible = !_isConfirmPasswordVisible; // Переключаем видимость
+                            _isPasswordVisible = !_isPasswordVisible;
                           });
                         },
                       ),
                     ),
                     style: TextStyle(color: Colors.white),
-                    obscureText: !_isConfirmPasswordVisible, // Скрываем текст, если флаг установлен
+                    obscureText: !_isPasswordVisible,
                   ),
-                SizedBox(height: 0),
-                // "Remember Me" Checkbox
-                Row(
-                  children: [
-                    Checkbox(
-                      value: rememberMe,
-                      onChanged: (bool? value) {
-                        setState(() {
-                          rememberMe = value ?? false;
-                        });
-                      },
-                    ),
-                    Text(
-                      'Remember me',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                  ],
                 ),
-                // Submit button
+                if (isLogin) ...[
+                  SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Checkbox(
+                        value: rememberMe,
+                        onChanged: (bool? value) {
+                          setState(() {
+                            rememberMe = value ?? false;
+                          });
+                        },
+                        activeColor: Color(0xFFEE3A57),
+                      ),
+                      Text(
+                        'Запомнить меня',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ],
+                  ),
+                  Align(
+                    alignment: Alignment.center,
+                    child: TextButton(
+                      onPressed: _showResetPasswordDialog,
+                      child: Text(
+                        'Забыли пароль?',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                  ),
+                ],
+                if (!isLogin) ...[
+                  SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextField(
+                      controller: confirmPasswordController,
+                      focusNode: confirmPasswordFocusNode,
+                      decoration: inputDecoration.copyWith(
+                        labelText: 'Подтвердите пароль',
+                        suffixIcon: IconButton(
+                          icon: Icon(
+                            _isConfirmPasswordVisible
+                                ? Icons.visibility
+                                : Icons.visibility_off,
+                            color: Colors.white,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isConfirmPasswordVisible = !_isConfirmPasswordVisible;
+                            });
+                          },
+                        ),
+                      ),
+                      style: TextStyle(color: Colors.white),
+                      obscureText: !_isConfirmPasswordVisible,
+                    ),
+                  ),
+                ],
+                SizedBox(height: 20),
                 SizedBox(
                   width: double.infinity,
+                  height: 56,
                   child: ElevatedButton(
                     onPressed: onAuth,
                     child: Text(
@@ -318,63 +336,67 @@ class _AuthScreenState extends State<AuthScreen> {
                       style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                     ),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Color(0xFFEE3A57), // Цвет кнопки
-                      foregroundColor: Colors.white, // Цвет текста
-                      padding: EdgeInsets.symmetric(vertical: 10), // Вертикальные отступы
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)), // Скругленные углы
-                      elevation: 5, // Тень
+                      backgroundColor: Color(0xFFEE3A57),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      elevation: 5,
                     ),
                   ),
                 ),
-                SizedBox(height: 20),
+                SizedBox(height: 16),
                 SizedBox(
                   width: double.infinity,
+                  height: 56,
                   child: ElevatedButton(
                     onPressed: () async {
-                      await firebaseService.signInWithGoogle(context); // Передача контекста
+                      await firebaseService.signInWithGoogle(context);
                     },
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // Здесь добавляем изображение
                         SvgPicture.asset(
-                          'assets/images/google.svg', // Путь к вашему SVG
-                          height: 24, // Задайте высоту изображения
-                          width: 24, // Задайте ширину изображения
+                          'assets/images/google.svg',
+                          height: 24,
+                          width: 24,
                         ),
-                        SizedBox(width: 8), // Отступ между изображением и текстом
+                        SizedBox(width: 8),
                         Text(
-                          'Sign in with Google',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                          'Войти с Google',
+                          style: TextStyle(
+                              fontSize: 20, fontWeight: FontWeight.bold),
                         ),
                       ],
                     ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.orange,
                       foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(vertical: 8),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20)),
                     ),
                   ),
                 ),
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 20.0),
-                  child: TextButton(
-                    child: Text(
-                      isLogin ? 'Don’t have an account? Sign up' : 'Already have an account? Log in',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    onPressed: () {
-                      setState(() {
-                        isLogin = !isLogin;
-                      });
-                    },
+                SizedBox(height: 16),
+                TextButton(
+                  child: Text(
+                    isLogin
+                        ? 'У вас нету аккаунта? Регистрация'
+                        : 'У вас уже есть аккаунт? Войти',
+                    style: TextStyle(color: Colors.white),
                   ),
+                  onPressed: () {
+                    setState(() {
+                      isLogin = !isLogin;
+                    });
+                  },
                 ),
+                SizedBox(height: 10),
               ],
             ),
           ),
-        )
+        ),
+      ),
     );
   }
 }

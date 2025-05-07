@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:shop/firebase_service.dart';
-import 'package:shop/screens/profileScreen.dart'; // Used for navigation
-import 'package:shop/screens/cartScreen.dart'; // Used for navigation
+import 'package:shop/screens/profileScreen.dart';
+import 'package:shop/screens/cartScreen.dart';
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:shop/screens/productDetailScreen.dart'; // Importing the updated screen
+import 'package:shop/screens/productDetailScreen.dart';
 
 class ProductListScreen extends StatefulWidget {
   @override
@@ -15,19 +15,19 @@ class _ProductListScreenState extends State<ProductListScreen> {
   late Future<List<Map<String, dynamic>>> _productsFuture;
   int _selectedIndex = 0;
   String _searchQuery = "";
-// Фильтры
+
   String? _selectedCategory;
   String? _selectedGender;
   String? _selectedSize;
   String? _selectedColor;
   String? _selectedSeason;
   String? _selectedBrand;
-  String? _otherBrandName; // Для хранения пользовательского бренда, если выбран "Другой"
+  String? _otherBrandName;
   String? _selectedMaterial;
   bool _isFiltersVisible = false;
   RangeValues _tempWeightRange = const RangeValues(0, 5);
-  RangeValues _weightRange = const RangeValues(0, 5); // Диапазон веса от 0 до 5 кг
-  RangeValues _priceRange = const RangeValues(0, 3000); // Диапазон цены от 0 до 3000
+  RangeValues _weightRange = const RangeValues(0, 5);
+  RangeValues _priceRange = const RangeValues(0, 3000);
   void _resetFilters() {
     setState(() {
       _selectedCategory = null;
@@ -42,21 +42,19 @@ class _ProductListScreenState extends State<ProductListScreen> {
     });
   }
 
-// Список категорий и опций пола
-  final List<String> _categories = ['Одежда', 'Обувь', 'Аксессуары']; // Пример категорий
+  final List<String> _categories = ['Для бега', 'Для зала', 'Для фитнеса','Для тениса','Для спринтеров','Универсальные'];
   final List<String> _genderOptions = ['Мужской', 'Женский', 'Унисекс'];
-  // Colors
+
   final Color _backgroundColor = Color(0xFF18171c);
   final Color _surfaceColor = Color(0xFF25252C);
   final Color _primaryColor = Color(0xFFEE3A57);
   final Color _secondaryTextColor = Colors.grey[400]!;
   final Color _textFieldFillColor = Color(0xFF25252C);
-// Списки параметров для фильтров
-  final List<String> _sizes = ['S', 'M', 'L', 'XL', 'XXL']; // Пример размеров
-  final List<String> _colors = ['Красный', 'Синий', 'Зелёный', 'Черный', 'Белый']; // Пример цветов
-  final List<String> _seasons = ['Зима', 'Лето', 'Осень', 'Весна']; // Пример сезонов
-  final List<String> _brands = ['Nike', 'Adidas', 'Puma', 'Reebok']; // Пример брендов
-  final List<String> _materials = ['Хлопок', 'Полиэстер', 'Кожа', 'Шерсть']; // Пример
+
+  final List<String> _colors = ['Красный', 'Синий', 'Зелёный', 'Черный', 'Белый'];
+  final List<String> _seasons = ['Зима', 'Лето', 'Осень', 'Весна'];
+  final List<String> _brands = ['Nike', 'Adidas', 'Puma', 'Reebok'];
+  final List<String> _materials = ['Хлопок', 'Полиэстер', 'Кожа', 'Шерсть'];
   @override
   void initState() {
     super.initState();
@@ -74,11 +72,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
             children: [
               RangeSlider(
                 values: _weightRange.start < 0 || _weightRange.end > 5
-                    ? const RangeValues(0, 5) // Возвращаем диапазон в допустимые пределы
+                    ? const RangeValues(0, 5)
                     : _weightRange,
                 min: 0,
                 max: 5,
-                divisions: 50, // 0.1 кг шаг
+                divisions: 50,
                 onChanged: (range) {
                   setState(() {
                     _weightRange = range;
@@ -103,7 +101,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Поисковая строка с кнопкой переключения видимости фильтров
+
           Row(
             children: [
               Expanded(
@@ -135,7 +133,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                 ),
               ),
               SizedBox(width: 8),
-              // Кнопка для показа/скрытия фильтров
+
               IconButton(
                 icon: Icon(
                   _isFiltersVisible ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
@@ -150,7 +148,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
             ],
           ),
 
-          // Анимация для скрытия/отображения фильтров
           AnimatedContainer(
             duration: Duration(milliseconds: 300),
             curve: Curves.easeInOut,
@@ -165,7 +162,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                     spacing: 12,
                     runSpacing: 12,
                     children: [
-                      // Фильтр категории
+
                       DropdownButton<String>(
                         value: _selectedCategory,
                         hint: Text('Категория', style: TextStyle(color: _secondaryTextColor)),
@@ -186,7 +183,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         underline: SizedBox.shrink(),
                       ),
 
-                      // Фильтр размера
                       Container(
                         width: 150,
                         child: TextFormField(
@@ -211,7 +207,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         ),
                       ),
 
-                      // Фильтр цвета
                       DropdownButton<String>(
                         value: _selectedColor,
                         hint: Text('Цвет', style: TextStyle(color: _secondaryTextColor)),
@@ -232,7 +227,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         underline: SizedBox.shrink(),
                       ),
 
-                      // Фильтр сезона
                       DropdownButton<String>(
                         value: _selectedSeason,
                         hint: Text('Сезон', style: TextStyle(color: _secondaryTextColor)),
@@ -253,7 +247,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         underline: SizedBox.shrink(),
                       ),
 
-                      // Фильтр бренда
                       DropdownButton<String>(
                         value: _selectedBrand,
                         hint: Text('Бренд', style: TextStyle(color: _secondaryTextColor)),
@@ -277,7 +270,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         underline: SizedBox.shrink(),
                       ),
 
-                      // Поле для ввода бренда
                       if (_selectedBrand == 'Другой')
                         Container(
                           width: 200,
@@ -302,7 +294,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                           ),
                         ),
 
-                      // Диапазон веса
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -314,7 +305,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
                             values: _tempWeightRange,
                             min: 0,
                             max: 5,
-                            divisions: 20, // 0.25 кг шаг
+                            divisions: 20,
                             activeColor: _primaryColor,
                             inactiveColor: _secondaryTextColor,
                             labels: RangeLabels(
@@ -333,13 +324,12 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   ),
                   SizedBox(height: 16),
 
-                  // Кнопка "Поиск"
                   Align(
                     alignment: Alignment.centerRight,
                     child: ElevatedButton.icon(
                       onPressed: () {
                         setState(() {
-                          // Применяем временные значения фильтров
+
                           _weightRange = _tempWeightRange;
                         });
                       },
@@ -386,12 +376,11 @@ class _ProductListScreenState extends State<ProductListScreen> {
                       '${_weightRange.end.toInt()} кг',
                     ),
                     onChanged: (range) {
-                      // Обновляем состояние внутри диалога
+
                       setDialogState(() {
                         _weightRange = range;
                       });
 
-                      // Также обновляем состояние основного экрана
                       setState(() {
                         _weightRange = range;
                       });
@@ -411,7 +400,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
       },
     );
   }
-  // Price formatting
+
   String formatPrice(dynamic price) {
     double priceDouble;
     if (price is double) {
@@ -428,10 +417,10 @@ class _ProductListScreenState extends State<ProductListScreen> {
     int kopecks = ((priceDouble - rubles) * 100).round();
 
     if (kopecks == 0) {
-      // Без копеек
+
       return '$rubles BYN';
     } else {
-      // С копейками
+
       String kopecksStr = kopecks.toString().padLeft(2, '0');
       return '$rubles.$kopecksStr BYN';
     }
@@ -441,7 +430,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
     setState(() { _selectedIndex = index; });
 
     switch (index) {
-      case 0: break; // Already on main
+      case 0: break;
       case 1: // Cart
         Navigator.push(context, MaterialPageRoute(builder: (context) => CartScreen())).then((_) {});
         break;
@@ -470,48 +459,62 @@ class _ProductListScreenState extends State<ProductListScreen> {
   }
 
   Widget _buildProductGrid(List<Map<String, dynamic>> products) {
-    final filteredProducts = products.where((product) {
-      final nameMatches = (product['name']?.toString().toLowerCase() ?? '').contains(_searchQuery);
-      final descriptionMatches = (product['description']?.toString().toLowerCase() ?? '').contains(_searchQuery);
-      final categoryMatches = _selectedCategory == null || product['category'] == _selectedCategory;
+    final query = _searchQuery.trim().toLowerCase();
 
-      // Фильтрация размера и цвета
+    final List<Map<String, dynamic>> nameMatches = [];
+    final List<Map<String, dynamic>> descriptionMatches = [];
+    final List<Map<String, dynamic>> brandMatches = [];
+
+    for (final product in products) {
+
+      final categoryMatches = _selectedCategory == null || product['category'] == _selectedCategory;
       final sizeMatches = _selectedSize == null ||
           ((product['sizes'] as Map<String, dynamic>?)?.containsKey(_selectedSize) == true &&
               (_selectedColor == null ||
                   ((product['sizes'][_selectedSize]?['color_quantities'] as Map<String, dynamic>?)?.keys.contains(_selectedColor) == true)));
-
-
       final seasonMatches = _selectedSeason == null || product['season'] == _selectedSeason;
 
-      // Фильтрация бренда, включая "Другой"
-      final brandMatches = _selectedBrand == null ||
+      final brandFilterMatches = _selectedBrand == null ||
           (_selectedBrand == 'Другой'
               ? (product['brand']?.toLowerCase() == _otherBrandName?.toLowerCase())
               : (product['brand'] == _selectedBrand));
 
       final materialMatches = _selectedMaterial == null || product['material'] == _selectedMaterial;
 
-      // Диапазон веса
       final weightMatches = product['weight'] != null &&
           product['weight'] >= _weightRange.start &&
           product['weight'] <= _weightRange.end;
 
-      // Диапазон цены
       final priceMatches = product['price'] != null &&
           product['price'] >= _priceRange.start &&
           product['price'] <= _priceRange.end;
 
-      return nameMatches &&
-          descriptionMatches &&
-          categoryMatches &&
-          sizeMatches &&
-          seasonMatches &&
-          brandMatches &&
-          materialMatches &&
-          weightMatches &&
-          priceMatches;
-    }).toList();
+      if (!(categoryMatches && sizeMatches && seasonMatches && brandFilterMatches && materialMatches && weightMatches && priceMatches)) {
+        continue;
+      }
+
+      final name = (product['name']?.toString().toLowerCase() ?? '');
+      final description = (product['description']?.toString().toLowerCase() ?? '');
+      final brand = (product['brand']?.toString().toLowerCase() ?? '');
+
+      if (query.isEmpty) {
+
+        nameMatches.add(product);
+      } else if (name.contains(query)) {
+        nameMatches.add(product);
+      } else if (description.contains(query)) {
+        descriptionMatches.add(product);
+      } else if (brand.contains(query)) {
+        brandMatches.add(product);
+      }
+
+    }
+
+    final filteredProducts = [
+      ...nameMatches,
+      ...descriptionMatches,
+      ...brandMatches,
+    ];
 
     if (filteredProducts.isEmpty) {
       return Center(
@@ -545,7 +548,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
   Widget _buildProductCard(Map<String, dynamic> product) {
     final imageUrl = product['main_image_url'] as String?;
 
-    // --- НОВЫЙ подсчет общего количества ---
     int totalQuantity = 0;
     final sizesData = product['sizes'] as Map<String, dynamic>?;
     if (sizesData != null) {
@@ -585,7 +587,7 @@ class _ProductListScreenState extends State<ProductListScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // --- Изображение ---
+
             AspectRatio(
               aspectRatio: 1.0,
               child: Container(
@@ -596,20 +598,18 @@ class _ProductListScreenState extends State<ProductListScreen> {
               ),
             ),
 
-            // --- Информация о товаре ---
             Padding(
               padding: const EdgeInsets.all(8.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // --- Цена ---
+
                   Text(
                     formatPrice(product['price']),
                     style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 15),
                   ),
                   SizedBox(height: 6),
 
-                  // --- Название товара ---
                   Text(
                     product['name'] ?? 'Название товара',
                     style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
@@ -618,7 +618,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   ),
                   SizedBox(height: 4),
 
-                  // --- Краткое Описание (опционально) ---
                   Text(
                     product['description'] ?? '',
                     style: TextStyle(color: _secondaryTextColor, fontSize: 12),
@@ -627,7 +626,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                   ),
                   SizedBox(height: 8),
 
-                  // --- Кнопка "Подробнее" ---
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(
@@ -677,7 +675,6 @@ class _ProductListScreenState extends State<ProductListScreen> {
                         } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
                       return Center(child: Padding(padding: const EdgeInsets.all(32.0), child: Text('Товаров пока нет.', style: TextStyle(color: _secondaryTextColor, fontSize: 16))));
                     }
-
                     return SingleChildScrollView(
                       child: _buildProductGrid(snapshot.data!),
                     );

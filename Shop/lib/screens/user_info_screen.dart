@@ -6,8 +6,8 @@ import 'package:shop/screens/addProductScreen.dart';
 import 'package:shop/screens/productListScreen.dart';
 import 'package:shop/screens/auth_screen.dart';
 import 'package:shop/screens/scan_page.dart';
-
-import 'createAddressScreen.dart'; // Import the AuthScreen
+import 'package:shop/screens/supplierApplicationsScreen.dart';
+import 'createAddressScreen.dart'; 
 
 class UserInfoScreen extends StatefulWidget {
   const UserInfoScreen({
@@ -16,8 +16,8 @@ class UserInfoScreen extends StatefulWidget {
     required this.emailVerified,
   }) : super(key: key);
 
-  final String userId; // Храним userId
-  final bool emailVerified; // Храним статус проверки email
+  final String userId; 
+  final bool emailVerified; 
 
   @override
   _UserInfoScreenState createState() => _UserInfoScreenState();
@@ -29,20 +29,20 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
   @override
   void initState() {
     super.initState();
-    // Инициализируем Future для загрузки данных пользователя
+
     _userDataFuture = FirebaseService().firestore.collection('users').doc(widget.userId).get();
   }
 
   void _redirectToAuthScreen() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => AuthScreen()), // Navigate to AuthScreen
+      MaterialPageRoute(builder: (context) => AuthScreen()), 
     );
   }
 
   void _refreshData() {
     setState(() {
-      // Обновляем Future при нажатии на кнопку
+
       _userDataFuture = FirebaseService().firestore.collection('users').doc(widget.userId).get();
     });
   }
@@ -59,14 +59,13 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
             } else if (snapshot.hasError) {
               return Text('Ошибка: ${snapshot.error}');
             } else if (!snapshot.hasData || !snapshot.data!.exists) {
-              // Redirect to AuthScreen if user not found
+
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 _redirectToAuthScreen();
               });
               return Center(child: Text('Пользователь не найден. Перенаправление на страницу авторизации...'));
             }
 
-            // Получаем данные пользователя из Firestore
             final userData = snapshot.data!.data()!;
             final username = userData['username'] ?? 'Не указано';
             final email = userData['email'] ?? 'Не указано';
@@ -76,17 +75,17 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
               children: [
                 Text('User name: $username'),
                 Text('User email: $email'),
-                Text('Email verified: ${widget.emailVerified}'), // Отображаем статус проверки email
-                if (!widget.emailVerified) // Если email не подтвержден, показываем кнопку
+                Text('Email verified: ${widget.emailVerified}'), 
+                if (!widget.emailVerified) 
                   TextButton(
                     onPressed: () {
-                      FirebaseService().onVerifyEmail(); // Метод для подтверждения email
+                      FirebaseService().onVerifyEmail(); 
                     },
                     child: Text('Подтвердить Email'),
                   ),
                 ElevatedButton(
-                  onPressed: _refreshData, // Метод для обновления данных
-                  child: Text('Обновить данные'), // Кнопка для обновления
+                  onPressed: _refreshData, 
+                  child: Text('Обновить данные'), 
                 ),
                 TextButton(
                   onPressed: () {
@@ -107,7 +106,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => AddProductScreen(creatorId: widget.userId)), // Передаем userId
+                      MaterialPageRoute(builder: (context) => AddProductScreen(creatorId: widget.userId)), 
                     );
                   },
                   child: Text('Добавить продукты'),
@@ -116,7 +115,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => AddCategoryScreen()), // Переход к новому экрану
+                      MaterialPageRoute(builder: (context) => AddCategoryScreen()), 
                     );
                   },
                   child: Text('Добавить категорию'),
@@ -129,6 +128,15 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                     );
                   },
                   child: Text('Создать новый адрес'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => SupplierApplicationsScreen()),
+                    );
+                  },
+                  child: Text('Заявки поставщиков'),
                 ),
                 IconButton(
                   icon: Icon(Icons.qr_code_scanner),

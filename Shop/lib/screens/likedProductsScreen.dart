@@ -12,9 +12,8 @@ class LikedProductsScreen extends StatefulWidget {
 
 class _LikedProductsScreenState extends State<LikedProductsScreen> {
   Future<List<Map<String, dynamic>>>? likedProductsFuture;
-  int _selectedIndex = 1; // Индекс кнопки "Избранное" в навигации
+  int _selectedIndex = 1; 
 
-  // Цветовая схема
   static const Color _backgroundColor = Color(0xFF18171c);
   static const Color _surfaceColor = Color(0xFF1f1f24);
   static const Color _primaryColor = Color(0xFFEE3A57);
@@ -72,22 +71,22 @@ class _LikedProductsScreenState extends State<LikedProductsScreen> {
   }
 
   void _onItemTapped(int index) {
-    if (_selectedIndex == index) return; // Предотвращаем повторный переход на текущую страницу
+    if (_selectedIndex == index) return; 
 
     setState(() {
       _selectedIndex = index;
     });
 
     switch (index) {
-      case 0: // Главная
+      case 0: 
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => ProductListScreen()),
         );
         break;
-      case 1: // Избранное (уже здесь)
+      case 1: 
         break;
-      case 2: // Корзина
+      case 2: 
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => CartScreen()),
@@ -152,7 +151,7 @@ class _LikedProductsScreenState extends State<LikedProductsScreen> {
             padding: EdgeInsets.all(16),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
               crossAxisCount: 2,
-              childAspectRatio: 0.6,
+              childAspectRatio: 0.58,
               crossAxisSpacing: 16,
               mainAxisSpacing: 16,
             ),
@@ -192,49 +191,92 @@ class _LikedProductsScreenState extends State<LikedProductsScreen> {
   }
 
   Widget _buildProductCard(BuildContext context, Map<String, dynamic> product) {
-    final discount = product['discount'] as int;
-    final hasDiscount = discount > 0;
-    final price = product['price'] as double;
-    final discountedPrice = hasDiscount ? price * (100 - discount) / 100 : price;
-    final productName = product['name']?.toString() ?? 'Без названия';
-    final firstWord = productName.split(' ').first; // Берём только первое слово
 
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ProductDetailScreen(
-              productId: product['product_id'].toString(),
-            ),
-          ),
-        );
-      },
-      child: Container(
-        decoration: BoxDecoration(
-          color: _surfaceColor,
-          borderRadius: BorderRadius.circular(16),
-        ),
+    const Color _surfaceColor = Color(0xFF25252C);
+    const Color _primaryColor = Color(0xFFEE3A57);
+    final Color _secondaryTextColor = Colors.grey[400]!;
+    final Color _textFieldFillColor = Color(0xFF25252C);
+
+    final imageUrl = product['main_image_url'] as String?;
+
+    int totalQuantity = 0;
+    final sizesData = product['sizes'] as Map<String, dynamic>?;
+    if (sizesData != null) {
+      sizesData.forEach((size, sizeValue) {
+        if (sizeValue is Map<String, dynamic>) {
+          final colorsData = sizeValue['color_quantities'] as Map<String, dynamic>?;
+          if (colorsData != null) {
+            colorsData.forEach((color, quantity) {
+              if (quantity is int) totalQuantity += quantity;
+            });
+          }
+        }
+      });
+    }
+    final bool isOutOfStock = totalQuantity <= 0;
+    final productId = product['product_id']?.toString();
+
+    final int discount = (product['discount'] is int) ? product['discount'] : 0;
+    final bool hasDiscount = discount > 0;
+    final double price = (product['price'] is double)
+        ? product['price']
+        : (product['price'] is int)
+        ? (product['price'] as int).toDouble()
+        : double.tryParse(product['price']?.toString() ?? '') ?? 0.0;
+    final double discountedPrice = hasDiscount ? price * (100 - discount) / 100 : price;
+
+    String formatPrice(dynamic price) {
+      double priceDouble;
+      if (price is double) {
+        priceDouble = price;
+      } else if (price is int) {
+        priceDouble = price.toDouble();
+      } else if (price is String) {
+        priceDouble = double.tryParse(price) ?? 0.0;
+      } else {
+        priceDouble = 0.0;
+      }
+      int rubles = priceDouble.toInt();
+      int kopecks = ((priceDouble - rubles) * 100).round();
+      return kopecks == 0
+          ? '$rubles BYN'
+          : '$rubles.${kopecks.toString().padLeft(2, '0')} BYN';
+    }
+
+    return Card(
+      elevation: 0,
+      color: _surfaceColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: () {
+          if (productId != null) {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => ProductDetailScreen(productId: productId),
+              ),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Не удалось открыть товар.'), backgroundColor: Colors.red));
+          }
+        },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
           children: [
-            // Изображение товара
+
             Stack(
               children: [
-                Container(
-                  height: 150,
-                  width: double.infinity,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-                    child: Image.network(
-                      product['main_image_url'] ?? '',
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        color: Colors.grey[800],
-                        child: Icon(Icons.image_not_supported, color: Colors.grey),
-                      ),
-                    ),
+                AspectRatio(
+                  aspectRatio: 1.0,
+                  child: Container(
+                    color: _textFieldFillColor,
+                    child: imageUrl != null && imageUrl.isNotEmpty
+                        ? Image.network(imageUrl, fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, color: _secondaryTextColor, size: 40)
+                    )
+                        : Center(child: Icon(Icons.image_not_supported, color: _secondaryTextColor, size: 40)),
                   ),
                 ),
                 if (hasDiscount)
@@ -260,58 +302,77 @@ class _LikedProductsScreenState extends State<LikedProductsScreen> {
                 Positioned(
                   top: 8,
                   right: 8,
-                  child: Icon(
-                    Icons.favorite,
-                    color: _primaryColor,
-                    size: 24,
-                  ),
+                  child: Icon(Icons.favorite, color: _primaryColor, size: 24),
                 ),
               ],
             ),
-            SizedBox(height: 8),
-            // Информация о товаре
+
             Padding(
-              padding: EdgeInsets.all(12),
+              padding: const EdgeInsets.all(8.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Flexible(
-                    child: Text(
-                      firstWord,
-                      style: TextStyle(
-                        color: _textColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 14,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  SizedBox(height: 8),
+
                   Row(
                     children: [
                       Text(
-                        _formatPrice(discountedPrice),
+                        formatPrice(discountedPrice),
                         style: TextStyle(
-                          color: _textColor,
+                          color: Colors.white,
                           fontWeight: FontWeight.bold,
-                          fontSize: 16,
+                          fontSize: 15,
                         ),
                       ),
                       if (hasDiscount)
                         Padding(
                           padding: EdgeInsets.only(left: 8),
                           child: Text(
-                            _formatPrice(price),
+                            formatPrice(price),
                             style: TextStyle(
                               color: _secondaryTextColor,
-                              fontSize: 14,
+                              fontSize: 13,
                               decoration: TextDecoration.lineThrough,
                             ),
                           ),
                         ),
                     ],
+                  ),
+                  SizedBox(height: 6),
+
+                  Text(
+                    product['name'] ?? 'Название товара',
+                    style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  SizedBox(height: 8),
+
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: (productId == null || isOutOfStock)
+                          ? null
+                          : () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                ProductDetailScreen(productId: productId),
+                          ),
+                        );
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: isOutOfStock ? Colors.grey[700] : _primaryColor,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: Colors.grey[700]?.withOpacity(0.7),
+                        padding: EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                        textStyle: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        elevation: 0,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                      child: Text(isOutOfStock ? 'Нет в наличии' : 'Подробнее'),
+                    ),
                   ),
                 ],
               ),

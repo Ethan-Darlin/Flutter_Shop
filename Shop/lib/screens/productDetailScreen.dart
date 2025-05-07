@@ -9,7 +9,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shop/screens/cartScreen.dart';
 import 'package:shop/screens/productListScreen.dart';
-// import 'package:shop/screens/profileScreen.dart';
+
 
 class ImageKitService {
   static const String _imageKitUrl =
@@ -46,7 +46,7 @@ class ImageKitService {
 
 class ExpandableText extends StatefulWidget {
   final String text;
-  final int trimLines; // Количество строк до сворачивания
+  final int trimLines;
   final TextStyle? style;
   final TextStyle? linkStyle;
 
@@ -63,7 +63,7 @@ class ExpandableText extends StatefulWidget {
 }
 
 class _ExpandableTextState extends State<ExpandableText> {
-  bool _isExpanded = false; // Контролирует состояние текста (развернут/свёрнут)
+  bool _isExpanded = false;
 
   @override
   Widget build(BuildContext context) {
@@ -79,20 +79,19 @@ class _ExpandableTextState extends State<ExpandableText> {
 
     return LayoutBuilder(
       builder: (BuildContext context, BoxConstraints constraints) {
-        // Определяем, превышает ли текст заданное количество строк
+
         final TextPainter textPainter = TextPainter(
           text: TextSpan(text: widget.text, style: defaultTextStyle),
           maxLines: widget.trimLines,
           textDirection: TextDirection.ltr,
         )..layout(maxWidth: constraints.maxWidth);
 
-        // Показывать ли кнопку "Читать далее"
         final bool isTextOverflowing = textPainter.didExceedMaxLines;
 
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Текст (обрезанный или полный)
+
             Text(
               widget.text,
               style: defaultTextStyle,
@@ -100,12 +99,11 @@ class _ExpandableTextState extends State<ExpandableText> {
               maxLines: _isExpanded ? null : widget.trimLines,
             ),
 
-            // Кнопка "Читать далее" / "Свернуть"
             if (isTextOverflowing)
               InkWell(
                 onTap: () {
                   setState(() {
-                    _isExpanded = !_isExpanded; // Переключаем состояние
+                    _isExpanded = !_isExpanded;
                   });
                 },
                 child: Padding(
@@ -126,7 +124,6 @@ class _ExpandableTextState extends State<ExpandableText> {
 class ProductDetailScreen extends StatefulWidget {
   final String productId;
 
-  // --- ИСПРАВЛЕНО: Константы объявлены здесь как static const ---
   static const Color primaryColor = Color(0xFFEE3A57);
   static const Color darkBg = Color(0xFF18171c);
   static const Color lightBg = Color(0xFF1f1f24);
@@ -167,6 +164,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   void initState() {
     super.initState();
     _fetchProductDataAndDetails();
+    FirebaseService().addRecentlyViewedProduct(widget.productId);
     _focusNode.addListener(() {
       if (mounted) setState(() {});
     });
@@ -366,7 +364,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   }
   Future<String?> _getCategoryNameById(int categoryId) async {
     try {
-      // Выполняем запрос к коллекции категорий
+
       QuerySnapshot<Map<String, dynamic>> snapshot = await FirebaseFirestore
           .instance
           .collection('categories')
@@ -375,13 +373,13 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           .get();
 
       if (snapshot.docs.isNotEmpty) {
-        // Возвращаем имя категории
+
         return snapshot.docs.first.data()['name'] as String?;
       }
     } catch (e) {
       print('Ошибка получения имени категории: $e');
     }
-    return null; // Если категория не найдена
+    return null;
   }
   void _shareProduct() {
     if (_productData == null) {
@@ -392,8 +390,8 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
     final String productName = _productData?['name'] ?? 'Товар';
     final String productPrice = formatPrice(_productData?['price']);
-    // Вот ссылка-редирект на твой сервер!
-    final String clickUrl = "https://server-8h1s.onrender.com/product_redirect?productId=${widget.productId}";
+
+    final String clickUrl = "https://server-yugj.onrender.com/product_redirect?productId=${widget.productId}";
 
     final String shareMessage = '''
 ✨ $productName
@@ -464,7 +462,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       return;
     }
 
-    // Проверка на существующий комментарий
     final existingReviews = await FirebaseFirestore.instance
         .collection('reviews')
         .where('product_id', isEqualTo: currentProductId)
@@ -482,7 +479,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
 
     try {
-      // Проверяем, совершал ли пользователь покупку
+
       final isPurchased = await _isProductPurchased(user.uid, currentProductId);
 
       List<String> imageUrls = [];
@@ -493,7 +490,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         }
       }
 
-      // Добавляем отзыв в Firestore
       await FirebaseFirestore.instance.collection('reviews').add({
         'product_id': currentProductId,
         'user_id': user.uid,
@@ -501,12 +497,11 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         'comment': _commentController.text.trim(),
         'created_at': FieldValue.serverTimestamp(),
         'images': imageUrls,
-        'verified_purchase': isPurchased, // Добавляем флаг "Проверенная покупка"
+        'verified_purchase': isPurchased,
         'liked_by': [],
         'likes': 0,
       });
 
-      // Очистка полей после добавления отзыва
       _commentController.clear();
       _focusNode.unfocus();
       if (!mounted) return;
@@ -606,7 +601,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     try {
       print('Проверяем покупку для userId: $userId, productId: $productId');
 
-      // Получаем все заказы пользователя
       final ordersSnapshot = await FirebaseFirestore.instance
           .collection('orders')
           .where('user_id', isEqualTo: userId)
@@ -620,25 +614,22 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       final orderIds = ordersSnapshot.docs.map((doc) => doc.id).toList();
       print('ID заказов пользователя: $orderIds');
 
-      // Преобразуем productId в число, если это возможно
       final int? productIdInt = int.tryParse(productId);
       if (productIdInt == null) {
         print('Ошибка: productId не удалось преобразовать в число.');
         return false;
       }
 
-      // Проверяем, есть ли завершенные товары с переданным productId
       final orderItemsSnapshot = await FirebaseFirestore.instance
           .collection('order_items')
-          .where('order_id', whereIn: orderIds) // Проверка по ID заказов
-          .where('product_id', isEqualTo: productIdInt) // Проверка по product_id как числу
-          .where('item_status', isEqualTo: 'completed') // Проверка статуса
-          .limit(1) // Достаточно одной записи
+          .where('order_id', whereIn: orderIds)
+          .where('product_id', isEqualTo: productIdInt)
+          .where('item_status', isEqualTo: 'completed')
+          .limit(1)
           .get();
 
       final hasCompletedPurchase = orderItemsSnapshot.docs.isNotEmpty;
 
-      // Логируем результат для отладки
       print('Результат проверки: $hasCompletedPurchase');
 
       return hasCompletedPurchase;
@@ -666,17 +657,16 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         final isLiked = likedBy.contains(userId);
 
         if (isLiked) {
-          // Удаляем лайк
+
           likedBy.remove(userId);
         } else {
-          // Добавляем лайк
+
           likedBy.add(userId);
         }
 
-        // Обновляем документ
         transaction.update(reviewDoc, {
           'liked_by': likedBy,
-          'likes': likedBy.length, // Обновляем количество лайков
+          'likes': likedBy.length,
         });
       });
     } catch (e) {
@@ -691,7 +681,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
           .count()
           .get();
 
-      // Проверяем, что count не равен null, иначе возвращаем 0
       return snapshot.count ?? 0;
     } catch (e) {
       print('Ошибка при получении количества лайков: $e');
@@ -754,7 +743,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
   String formatPrice(dynamic price) {
     double priceDouble;
 
-    // Преобразование цены в число
     if (price is double) {
       priceDouble = price;
     } else if (price is int) {
@@ -765,15 +753,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
       priceDouble = 0.0;
     }
 
-    // Форматирование цены в белорусских рублях
     int rubles = priceDouble.toInt();
     int kopecks = ((priceDouble - rubles) * 100).round();
 
     if (kopecks == 0) {
-      return '$rubles BYN'; // Без копеек
+      return '$rubles BYN';
     } else {
       String kopecksStr = kopecks.toString().padLeft(2, '0');
-      return '$rubles.$kopecksStr BYN'; // С копейками
+      return '$rubles.$kopecksStr BYN';
     }
   }
 
@@ -831,7 +818,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
     }
   }
 
-  // --- ИСПРАВЛЕНО: Метод добавлен обратно в класс ---
   Color _getColorFromString(String colorString) {
     String lowerColor = colorString.toLowerCase().trim();
     switch (lowerColor) {
@@ -1462,7 +1448,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Заголовок
+
             Text(
               'Оставить отзыв',
               style: TextStyle(
@@ -1473,7 +1459,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             SizedBox(height: 14),
 
-            // Рейтинг
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: List.generate(5, (index) {
@@ -1499,7 +1484,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             SizedBox(height: 18),
 
-            // Поле ввода комментария
             Stack(
               children: [
                 TextField(
@@ -1531,7 +1515,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                   ),
                 ),
-                // Кнопка "Прикрепить фото"
+
                 Positioned(
                   bottom: 10,
                   right: 12,
@@ -1565,7 +1549,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
             ),
             SizedBox(height: 16),
 
-            // Превью прикрепленных изображений
             if (_selectedImages.isNotEmpty)
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
@@ -1604,7 +1587,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
               ),
             if (_selectedImages.isNotEmpty) SizedBox(height: 16),
 
-            // Кнопка отправки
             SizedBox(
               width: double.infinity,
               child: ElevatedButton.icon(
@@ -2013,10 +1995,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                     crossAxisAlignment:
                                     CrossAxisAlignment.start,
                                     children: [
-                                      // Строка с именем, датой, редактированием и удалением
+
                                       Row(
                                         children: [
-                                          // Имя пользователя
+
                                           Text(
                                             username,
                                             style: TextStyle(
@@ -2026,14 +2008,14 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                             ),
                                           ),
                                           Spacer(),
-                                          // Дата
+
                                           Text(
                                             dateString,
                                             style: TextStyle(
                                                 color: Colors.grey,
                                                 fontSize: 12),
                                           ),
-                                          // Редактирование и удаление
+
                                           if (currentUser != null &&
                                               currentUser.uid == userId)
                                             Row(
@@ -2064,7 +2046,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                         ],
                                       ),
 
-                                      // Пометка "Проверенная покупка" под строкой
                                       if (verified)
                                         Padding(
                                           padding: const EdgeInsets.only(
@@ -2092,7 +2073,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
 
                                       SizedBox(height: 8),
 
-                                      // Рейтинг
                                       Row(
                                         children: List.generate(5,
                                                 (starIndex) {
@@ -2106,7 +2086,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                             }),
                                       ),
 
-                                      // Текст комментария
                                       if (comment.isNotEmpty)
                                         Padding(
                                           padding: const EdgeInsets.only(
@@ -2122,7 +2101,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                                           ),
                                         ),
 
-                                      // Превью изображений
                                       if (imageUrls.isNotEmpty)
                                         Padding(
                                           padding:
@@ -2232,7 +2210,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Поле ввода комментария с кнопкой "Прикрепить фото"
+
                     Stack(
                       children: [
                         TextField(
@@ -2261,7 +2239,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                             ),
                           ),
                         ),
-                        // Кнопка "Прикрепить фото" внутри поля ввода
+
                         Positioned(
                           bottom: 10,
                           right: 12,
@@ -2309,7 +2287,6 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     ),
                     SizedBox(height: 16),
 
-                    // Превью прикрепленных изображений
                     if (updatedImages.isNotEmpty)
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
@@ -2352,7 +2329,7 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
                     final newComment = _editController.text.trim();
                     if (newComment.isNotEmpty) {
                       try {
-                        // Обновляем Firestore
+
                         await FirebaseFirestore.instance
                             .collection('reviews')
                             .doc(reviewId)
@@ -2416,10 +2393,10 @@ class _ProductDetailScreenState extends State<ProductDetailScreen> {
         .get();
 
     if (snapshot.docs.isNotEmpty) {
-      // Если лайк уже существует, удаляем его
+
       await likeRef.doc(snapshot.docs.first.id).delete();
     } else {
-      // Если лайка нет, добавляем его
+
       await likeRef.add({
         'user_id': userId,
         'product_id': productId,

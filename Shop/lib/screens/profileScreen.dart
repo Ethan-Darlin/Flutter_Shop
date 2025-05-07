@@ -8,7 +8,10 @@ import 'package:shop/screens/productDetailScreen.dart';
 import 'package:shop/screens/productListScreen.dart';
 import 'dart:typed_data';
 import 'dart:convert';
-
+import 'package:image_picker/image_picker.dart';
+import 'package:http/http.dart' as http;
+import 'dart:io';
+import 'package:uuid/uuid.dart';
 import 'likedProductsScreen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -20,13 +23,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Map<String, dynamic>? userData;
   Future<List<Map<String, dynamic>>>? orderItemsFuture;
   Future<List<Map<String, dynamic>>>? similarProductsFuture;
-  int _selectedIndex = 2; // Профиль - третий элемент (индекс 2)
-  bool _isPurchaseHistoryExpanded = false; // Переменная для отслеживания состояния
-  // --- Цвета темы ---
+  int _selectedIndex = 2;
+  bool _isPurchaseHistoryExpanded = false;
+
   static const Color _backgroundColor = Color(0xFF18171c);
-  static const Color _surfaceColor = Color(0xFF1f1f24); // Цвет карточек, панелей
-  static const Color _primaryColor = Color(0xFFEE3A57); // Акцентный цвет
-  static const Color _secondaryTextColor = Color(0xFFa0a0a0); // Серый текст
+  static const Color _surfaceColor = Color(0xFF1f1f24);
+  static const Color _primaryColor = Color(0xFFEE3A57);
+  static const Color _secondaryTextColor = Color(0xFFa0a0a0);
   static const Color _textFieldFillColor = Color(0xFF2a2a2e);
 
   @override
@@ -34,17 +37,29 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _fetchUserData();
     _fetchUserOrderItems();
-    _fetchSimilarProducts();
+  }
+  String getUserRoleLabel(String? role) {
+    switch (role) {
+      case 'user':
+        return 'Покупатель';
+      case 'admin':
+        return 'Администратор';
+      case 'supplier':
+        return 'Поставщик';
+      case 'seller':
+        return 'Продавец';
+      default:
+        return 'Неизвестно';
+    }
   }
 
-  // --- Методы загрузки данных (без изменений) ---
   Future<void> _fetchUserData() async {
     try {
       userData = await FirebaseService().getUserData();
       if (mounted) setState(() {});
     } catch (e) {
       print("Error fetching user data: $e");
-      // Можно показать SnackBar или другое уведомление об ошибке
+
     }
   }
   Future<List<Map<String, dynamic>>> _fetchLikedProducts() async {
@@ -52,13 +67,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (user == null) return [];
 
     try {
-      // Получаем все лайки текущего пользователя
+
       final likedSnapshot = await FirebaseFirestore.instance
           .collection('isLiked')
           .where('user_id', isEqualTo: user.uid)
           .get();
 
-      // Преобразуем product_id в строку, если он хранится как число
       final likedProductIds = likedSnapshot.docs.map((doc) {
         final productId = doc['product_id'];
         return productId is int ? productId.toString() : productId as String;
@@ -66,7 +80,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       if (likedProductIds.isEmpty) return [];
 
-      // Получаем данные товаров по их ID
       final productsSnapshot = await FirebaseFirestore.instance
           .collection('products')
           .where(FieldPath.documentId, whereIn: likedProductIds)
@@ -88,7 +101,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final userId = FirebaseAuth.instance.currentUser?.uid;
     if (userId == null) {
       print('User is not authenticated.');
-      // Устанавливаем пустой результат синхронно
+
       if (mounted) {
         setState(() {
           orderItemsFuture = Future.value([]);
@@ -98,18 +111,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
 
     try {
-      // Получаем заказы пользователя
+
       final ordersSnapshot = await FirebaseFirestore.instance
           .collection('orders')
           .where('user_id', isEqualTo: userId)
-          .orderBy('created_at', descending: true) // Используем 'created_at'
+          .orderBy('created_at', descending: true)
           .get();
 
-      // Если заказов нет
       if (ordersSnapshot.docs.isEmpty) {
         if (mounted) {
           setState(() {
-            orderItemsFuture = Future.value([]); // Устанавливаем пустой результат
+            orderItemsFuture = Future.value([]);
           });
         }
         print('No orders found for user: $userId');
@@ -118,7 +130,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       final orderIds = ordersSnapshot.docs.map((doc) => doc.id).toList();
 
-      // Дополнительная проверка, если вдруг orderIds пустой
       if (orderIds.isEmpty) {
         if (mounted) {
           setState(() {
@@ -128,23 +139,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         return;
       }
 
-      // Получаем связанные товары
       final orderItemsSnapshot = await FirebaseFirestore.instance
           .collection('order_items')
           .where('order_id', whereIn: orderIds)
           .get();
 
-      // Если товаров нет
       if (orderItemsSnapshot.docs.isEmpty) {
         if (mounted) {
           setState(() {
-            orderItemsFuture = Future.value([]); // Отображаем как пустой список заказов
+            orderItemsFuture = Future.value([]);
           });
         }
         print('No order items found for user orders: $orderIds');
       }
 
-      // Группируем товары по order_id и сохраняем даты
       final groupedItems = <String, List<Map<String, dynamic>>>{};
       final orderDates = <String, Timestamp>{};
 
@@ -154,7 +162,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         } else {
           print('created_at is null for order ID: ${orderDoc.id}');
         }
-        // Инициализируем пустой список для каждого заказа
+
         groupedItems[orderDoc.id] = [];
       }
 
@@ -164,47 +172,43 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ...doc.data() as Map<String, dynamic>,
         };
         final orderId = data['order_id'] as String;
-        // Добавляем товар в уже существующий список заказа
+
         if (groupedItems.containsKey(orderId)) {
           groupedItems[orderId]!.add(data);
         }
       }
 
-      // Фильтруем заказы, оставляя только те, где хотя бы один товар имеет статус 'Доставлен' или 'В пути'
       final filteredOrders = groupedItems.entries
           .where((entry) => entry.value.any((item) =>
       item['item_status'] == 'Доставлен' || item['item_status'] == 'В пути'))
           .map((entry) => {
         'order_id': entry.key,
         'items': entry.value,
-        'order_date': orderDates[entry.key], // Добавляем дату
+        'order_date': orderDates[entry.key],
       })
           .toList();
 
-      // Сортируем группы заказов по дате (новейшие сначала)
       filteredOrders.sort((a, b) {
         final dateA = a['order_date'] as Timestamp?;
         final dateB = b['order_date'] as Timestamp?;
         if (dateA == null && dateB == null) return 0;
         if (dateA == null) return 1;
         if (dateB == null) return -1;
-        return dateB.compareTo(dateA); // descending
+        return dateB.compareTo(dateA);
       });
 
-      // === Успешное завершение: Обновляем состояние с результатом ===
       if (mounted) {
-        print("Successfully fetched and processed filtered order items."); // Лог успеха
+        print("Successfully fetched and processed filtered order items.");
         setState(() {
           orderItemsFuture = Future.value(filteredOrders);
         });
       }
     } catch (e, stackTrace) {
       print('Error fetching order items: $e');
-      print('Stack trace: $stackTrace'); // Печатаем стек для детальной отладки
+      print('Stack trace: $stackTrace');
 
-      // === ОБРАБОТКА ОШИБКИ: Правильный вызов setState ===
       final errorFuture = Future<List<Map<String, dynamic>>>.error(
-          'Ошибка загрузки заказов: $e', stackTrace); // Передаем и стек
+          'Ошибка загрузки заказов: $e', stackTrace);
 
       if (mounted) {
         setState(() {
@@ -243,7 +247,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         groupedItems[orderId]!.add(data);
       }
 
-      // Filter for completed orders
       return groupedItems.entries
           .where((entry) => entry.value.any((item) => item['item_status'] == 'completed'))
           .map((entry) => {
@@ -258,7 +261,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
   void _showPurchaseHistoryDialog() async {
-    final completedOrders = await _fetchCompletedOrders(); // Fetch completed orders
+    final completedOrders = await _fetchCompletedOrders();
 
     showDialog(
       context: context,
@@ -305,42 +308,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> _fetchSimilarProducts() async {
-    try {
-      similarProductsFuture = FirebaseFirestore.instance
-          .collection('products')
-      // .orderBy(...)
-          .limit(10)
-          .get()
-          .then((snapshot) {
-        if (snapshot.docs.isEmpty) {
-          return <Map<String, dynamic>>[];
-        }
-        final allProducts = snapshot.docs.map((doc) {
-          return {
-            'product_id': doc.id,
-            ...doc.data() as Map<String, dynamic>,
-          };
-        }).toList();
-        allProducts.shuffle();
-        return allProducts;
-      });
-      if (mounted) setState(() {}); // Обновляем UI
-    } catch (e) {
-      print('Error fetching similar products: $e');
-      if (mounted) {
-        setState(() {
-          // Устанавливаем Future с ошибкой, чтобы FutureBuilder ее отобразил
-          similarProductsFuture = Future.error('Ошибка загрузки похожих товаров: $e');
-        });
-      }
-    }
+  Future<List<Map<String, dynamic>>> _fetchRecentlyViewedProducts() async {
+    return await FirebaseService().getRecentlyViewedOrRandomProducts();
   }
 
   String formatPrice(dynamic price) {
     double priceDouble;
 
-    // Преобразование цены в число
     if (price is double) {
       priceDouble = price;
     } else if (price is int) {
@@ -351,48 +325,45 @@ class _ProfileScreenState extends State<ProfileScreen> {
       priceDouble = 0.0;
     }
 
-    // Разделение на рубли и копейки
     int rubles = priceDouble.toInt();
     int kopecks = ((priceDouble - rubles) * 100).round();
 
-    // Форматирование цены
     if (kopecks == 0) {
-      return '$rubles BYN'; // Цена без копеек
+      return '$rubles BYN';
     } else {
       String kopecksStr = kopecks.toString().padLeft(2, '0');
-      return '$rubles.$kopecksStr BYN'; // Цена с копейками
+      return '$rubles.$kopecksStr BYN';
     }
   }
   String _formatDate(Timestamp? timestamp) {
     if (timestamp == null) return 'Дата неизвестна';
     final date = timestamp.toDate();
-    // Форматируем дату (Пример: 06 апр 2025, 16:20)
+
     return '${date.day.toString().padLeft(2,'0')} ${['янв','фев','мар','апр','мая','июн','июл','авг','сен','окт','ноя','дек'][date.month-1]} ${date.year}, ${date.hour.toString().padLeft(2,'0')}:${date.minute.toString().padLeft(2,'0')}';
   }
 
-  // --- Диалоговые окна (стилизованные) ---
   void _showQrDialog(String orderItemId, String productName) {
     showDialog(
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
-          backgroundColor: _surfaceColor, // Темный фон
+          backgroundColor: _surfaceColor,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           title: Text(
             'QR-код для товара',
             style: TextStyle(color: Colors.white),
           ),
-          content: Column( // Используем Column для QR и названия
+          content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                productName, // Отображаем название товара
+                productName,
                 textAlign: TextAlign.center,
                 style: TextStyle(color: _secondaryTextColor, fontSize: 14),
               ),
               SizedBox(height: 15),
               Container(
-                padding: EdgeInsets.all(8), // Белая рамка вокруг QR
+                padding: EdgeInsets.all(8),
                 color: Colors.white, // Фон для QR-кода
                 child: QrImageView(
                   data: orderItemId,
@@ -474,7 +445,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               onPressed: () async {
                 if (_formKey.currentState!.validate()) { // Проверяем форму
                   try {
-                    // Показываем индикатор загрузки
+
                     showDialog(
                       context: context,
                       barrierDismissible: false,
@@ -516,7 +487,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Вспомогательный метод для создания полей пароля в диалоге
   Widget _buildPasswordField(TextEditingController controller, String label, {String? Function(String?)? validator}) {
     return TextFormField( // Используем TextFormField для валидации
       controller: controller,
@@ -645,9 +615,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- Навигация (обновлен индекс профиля) ---
   void onItemTapped(int index) {
-    // Предотвращаем ненужную навигацию на текущий экран
+
     if (_selectedIndex == index) return;
 
     setState(() {
@@ -668,15 +637,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
         );
         break;
       case 2: // Профиль (уже здесь)
-      // Ничего не делаем
+
         break;
     }
   }
 
-  // --- Секции UI ---
   Widget _buildUserInfoSection() {
     if (userData == null) {
-      // Можно показать скелетон загрузки или компактный индикатор
       return Container(
         padding: const EdgeInsets.all(16.0),
         decoration: BoxDecoration(
@@ -686,6 +653,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
         child: Center(child: CircularProgressIndicator(color: _primaryColor)),
       );
     }
+
+    int loyaltyPoints = 0;
+    final rawPoints = userData!['loyalty_points'];
+    if (rawPoints is int) {
+      loyaltyPoints = rawPoints;
+    } else if (rawPoints is String) {
+      loyaltyPoints = int.tryParse(rawPoints) ?? 0;
+    }
+
+
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
       decoration: BoxDecoration(
@@ -694,26 +671,62 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: Row(
         children: [
-          CircleAvatar( // Аватарка (заглушка)
+          CircleAvatar(
             radius: 30,
             backgroundColor: _primaryColor.withOpacity(0.8),
             child: Icon(Icons.person_outline, size: 30, color: Colors.white),
-            // TODO: Загружать фото пользователя, если оно есть
           ),
           SizedBox(width: 16),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                userData!['username'] ?? 'Пользователь',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-              ),
-              SizedBox(height: 4),
-              Text(
-                userData!['email'] ?? 'Email не указан',
-                style: TextStyle(fontSize: 14, color: _secondaryTextColor),
-              ),
-            ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      userData!['username'] ?? 'Пользователь',
+                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
+                    ),
+                    SizedBox(width: 10),
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: _primaryColor.withOpacity(0.16),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        getUserRoleLabel(userData!['role']),
+                        style: TextStyle(
+                          color: _primaryColor,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 4),
+                Text(
+                  userData!['email'] ?? 'Email не указан',
+                  style: TextStyle(fontSize: 14, color: _secondaryTextColor),
+                ),
+                SizedBox(height: 8),
+                Row(
+                  children: [
+                    Icon(Icons.stars, color: Colors.amber, size: 20),
+                    SizedBox(width: 5),
+                    Text(
+                      'Баллы: $loyaltyPoints', // <--- Используем переменную
+                      style: TextStyle(
+                        color: Colors.amber,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -724,25 +737,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
     if (userId == null) return [];
 
     try {
-      // Получаем заказы пользователя
+
       final ordersSnapshot = await FirebaseFirestore.instance
           .collection('orders')
           .where('user_id', isEqualTo: userId)
           .orderBy('created_at', descending: true)
           .get();
 
-      // Если заказов нет
       if (ordersSnapshot.docs.isEmpty) return [];
 
       final orderIds = ordersSnapshot.docs.map((doc) => doc.id).toList();
 
-      // Получаем товары из заказов
       final orderItemsSnapshot = await FirebaseFirestore.instance
           .collection('order_items')
           .where('order_id', whereIn: orderIds)
           .get();
 
-      // Группируем товары по заказам
       final groupedItems = <String, List<Map<String, dynamic>>>{};
       for (var doc in orderItemsSnapshot.docs) {
         final data = {
@@ -756,7 +766,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         groupedItems[orderId]!.add(data);
       }
 
-      // Фильтруем заказы, где все товары имеют статус 'Возврат' или 'Получен'
       return groupedItems.entries
           .where((entry) => entry.value.every((item) =>
       item['item_status'] == 'Возврат' || item['item_status'] == 'Выдан'))
@@ -854,11 +863,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
               final historyOrders = snapshot.data!;
 
-              // Рассчитываем динамическую высоту
               double contentHeight = 0;
               for (final order in historyOrders) {
                 final items = order['items'] as List<dynamic>? ?? [];
-                // Высота заказа = базовая высота + дополнительные товары
+
                 contentHeight += baseOrderHeight + (items.length - 1) * additionalItemHeight;
               }
 
@@ -878,7 +886,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     final items = order['items'] ?? [];
                     final orderDate = order['order_date'] as Timestamp?;
 
-                    // Обрезаем номер заказа до 10 символов
                     if (orderId.length > 10) {
                       orderId = '${orderId.substring(0, 10)}...';
                     }
@@ -1005,11 +1012,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
             final groupedOrders = snapshot.data!;
 
-            // Рассчитываем динамическую высоту
             double contentHeight = 0;
             for (final order in groupedOrders) {
               final items = order['items'] as List<dynamic>? ?? [];
-              // Высота заказа = базовая высота + дополнительные товары
+
               contentHeight += baseOrderHeight + (items.length - 1) * additionalItemHeight;
             }
 
@@ -1029,7 +1035,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   final items = order['items'] ?? [];
                   final orderDate = order['order_date'] as Timestamp?;
 
-                  // Обрезаем номер заказа до 10 символов
                   if (orderId.length > 10) {
                     orderId = '${orderId.substring(0, 10)}...';
                   }
@@ -1046,7 +1051,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Заголовок заказа
+
                           Row(
                             mainAxisAlignment: MainAxisAlignment.spaceBetween,
                             children: [
@@ -1065,7 +1070,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             ],
                           ),
                           Divider(color: _secondaryTextColor.withOpacity(0.3), height: 20),
-                          // Список товаров в заказе
+
                           ListView.builder(
                             shrinkWrap: true,
                             physics: NeverScrollableScrollPhysics(),
@@ -1078,7 +1083,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                               final orderItemId = item['order_item_id'] ?? '';
                               final itemStatus = item['item_status'] ?? '';
 
-                              // Показываем QR-код только для товаров с определёнными статусами
                               final bool showQrButton = [
                                 'Возврат',
                                 'Получен',
@@ -1117,7 +1121,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       ),
                                     ),
                                     SizedBox(width: 10),
-                                    // Кнопка QR-кода
+
                                     if (showQrButton)
                                       IconButton(
                                         icon: Icon(
@@ -1153,19 +1157,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildSimilarProductsSection() {
+  Widget _buildRecentlyViewedSection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
           padding: const EdgeInsets.only(left: 16.0, right: 16.0, top: 30.0, bottom: 12.0),
           child: Text(
-            'Возможно, вам понравится',
+            'Ранее просмотренные',
             style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
           ),
         ),
         FutureBuilder<List<Map<String, dynamic>>>(
-          future: similarProductsFuture,
+          future: _fetchRecentlyViewedProducts(),
           builder: (context, snapshot) {
             if (snapshot.connectionState == ConnectionState.waiting) {
               return Container(
@@ -1183,22 +1187,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 child: Center(child: Text('Ошибка: ${snapshot.error}', style: TextStyle(color: Colors.redAccent))),
               );
             } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-              return SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24),
+                child: Text(
+                  'Вы ещё ничего не смотрели',
+                  style: TextStyle(color: Color(0xFFa0a0a0), fontSize: 16),
+                ),
+              );
             }
 
-            final similarProducts = snapshot.data!;
+            final products = snapshot.data!;
 
             return Container(
               height: 276,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 padding: EdgeInsets.only(left: 16.0, right: 8.0),
-                itemCount: similarProducts.length,
+                itemCount: products.length,
                 itemBuilder: (context, index) {
-                  final product = similarProducts[index];
+                  final product = products[index];
                   final mainImageUrl = product['main_image_url'];
-
-                  // Получаем первое слово из названия товара
                   final productName = product['name'] ?? 'Название товара';
                   final firstWord = productName.split(' ').first;
 
@@ -1207,7 +1215,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     margin: EdgeInsets.only(right: 8.0),
                     child: Card(
                       elevation: 0,
-                      color: _surfaceColor,
+                      color: Color(0xFF1f1f24),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
                       ),
@@ -1215,20 +1223,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Изображение товара
                           Container(
                             height: 150,
                             width: double.infinity,
-                            color: _textFieldFillColor,
+                            color: Color(0xFF2a2a2e),
                             child: mainImageUrl != null && mainImageUrl.isNotEmpty
                                 ? Image.network(
                               mainImageUrl,
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) =>
-                                  Icon(Icons.broken_image, color: _secondaryTextColor, size: 40),
+                                  Icon(Icons.broken_image, color: Color(0xFFa0a0a0), size: 40),
                             )
                                 : Center(
-                              child: Icon(Icons.image_not_supported, color: _secondaryTextColor, size: 40),
+                              child: Icon(Icons.image_not_supported, color: Color(0xFFa0a0a0), size: 40),
                             ),
                           ),
                           Padding(
@@ -1236,15 +1243,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                // Название товара (только первое слово)
                                 Text(
                                   firstWord,
                                   style: TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.w600),
-                                  maxLines: 1, // Ограничиваем в одну строку
+                                  maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
                                 ),
                                 SizedBox(height: 4),
-                                // Цена товара
                                 Text(
                                   formatPrice(product['price'] ?? 0),
                                   style: TextStyle(
@@ -1253,7 +1258,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                       fontSize: 15),
                                 ),
                                 SizedBox(height: 5),
-                                // Кнопка "Подробнее"
                                 SizedBox(
                                   width: double.infinity,
                                   child: ElevatedButton(
@@ -1262,13 +1266,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                                         context,
                                         MaterialPageRoute(
                                           builder: (context) => ProductDetailScreen(
-                                            productId: product['product_id'].toString(), // Преобразуем в строку
+                                            productId: product['product_id'].toString(),
                                           ),
                                         ),
                                       );
                                     },
                                     style: ElevatedButton.styleFrom(
-                                      backgroundColor: _primaryColor,
+                                      backgroundColor: Color(0xFFEE3A57),
                                       padding: EdgeInsets.symmetric(vertical: 8),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(8),
@@ -1296,7 +1300,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // Виджет скелетона для карточки товара
   Widget _buildProductCardSkeleton() {
     return Container(
       width: 160,
@@ -1330,7 +1333,208 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
     );
   }
+  void _showSupplierDialog() {
+    final _phoneController = TextEditingController();
+    final String? userEmail = userData?['email']; // или FirebaseAuth.instance.currentUser?.email
+    final _formKey = GlobalKey<FormState>();
+    final _fioController = TextEditingController();
+    final _descriptionController = TextEditingController();
+    XFile? _pickedImage;
+    String? _imageUrl;
+    bool _isLoading = false;
 
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            Future<void> _pickImage() async {
+              final picker = ImagePicker();
+              final picked = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+              if (picked != null) {
+                setState(() {
+                  _pickedImage = picked;
+                });
+              }
+            }
+
+            Future<String?> _uploadToImageKit(XFile file) async {
+              final url = 'https://upload.imagekit.io/api/v1/files/upload';
+
+              final String publicKey = 'public_0EblotM8xHzpWNJUXWiVtRnHbGA=';
+              final String privateKey = 'private_ZKL7E/ailo8o7MHqrvHIpxQRIiE='; // ! Не используйте на проде
+              final String fileName = file.name;
+
+              final String basicAuth = 'Basic ' + base64Encode(utf8.encode('$privateKey:'));
+
+              final request = http.MultipartRequest('POST', Uri.parse(url));
+              request.headers['Authorization'] = basicAuth;
+              request.fields['fileName'] = fileName;
+              request.fields['publicKey'] = publicKey;
+
+
+              request.files.add(await http.MultipartFile.fromPath('file', file.path));
+
+              final response = await request.send();
+              final respStr = await response.stream.bytesToString();
+              if (response.statusCode == 200) {
+                final data = jsonDecode(respStr);
+                return data['url'];
+              } else {
+                print('Ошибка ImageKit: $respStr');
+                return null;
+              }
+            }
+
+            Future<void> _submit() async {
+              if (!_formKey.currentState!.validate() || _pickedImage == null) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Заполните все поля и выберите фото документов!'), backgroundColor: Colors.red),
+                );
+                return;
+              }
+              setState(() => _isLoading = true);
+
+              try {
+
+                final imageUrl = await _uploadToImageKit(_pickedImage!);
+                if (imageUrl == null) throw Exception('Ошибка загрузки фото');
+
+                final anketaId = Uuid().v4();
+                final userId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown';
+                final email = userEmail ?? FirebaseAuth.instance.currentUser?.email ?? '';
+
+                await FirebaseFirestore.instance.collection('supplier_applications').doc(anketaId).set({
+                  'anketa_id': anketaId,
+                  'user_id': userId,
+                  'fio': _fioController.text.trim(),
+                  'phone': _phoneController.text.trim(),
+                  'email': email,
+                  'document_photo': imageUrl,
+                  'description': _descriptionController.text.trim(),
+                  'created_at': FieldValue.serverTimestamp(),
+                  'status': 'pending', // Для модерации
+                });
+
+                Navigator.of(context).pop(); // Закрываем диалог
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Ваша анкета отправлена!'), backgroundColor: Colors.green),
+                );
+              } catch (e) {
+                setState(() => _isLoading = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Ошибка: ${e.toString()}'), backgroundColor: Colors.red),
+                );
+              }
+            }
+
+            return AlertDialog(
+              backgroundColor: _surfaceColor,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+              title: Text('Анкета поставщика', style: TextStyle(color: Colors.white)),
+              content: SizedBox(
+                width: 350,
+                child: Form(
+                  key: _formKey,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        TextFormField(
+                          controller: _fioController,
+                          style: TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: 'ФИО',
+                            labelStyle: TextStyle(color: _secondaryTextColor),
+                            filled: true,
+                            fillColor: _textFieldFillColor,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          validator: (v) => v == null || v.trim().isEmpty ? 'Введите ваше ФИО' : null,
+                        ),
+                        SizedBox(height: 14),
+
+                        TextFormField(
+                          controller: _phoneController,
+                          keyboardType: TextInputType.phone,
+                          style: TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: 'Номер телефона',
+                            labelStyle: TextStyle(color: _secondaryTextColor),
+                            filled: true,
+                            fillColor: _textFieldFillColor,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          validator: (v) {
+                            if (v == null || v.trim().isEmpty) return 'Введите номер телефона';
+                            final phonePattern = RegExp(r'^\+?\d{7,15}$');
+                            if (!phonePattern.hasMatch(v.trim())) return 'Введите корректный номер';
+                            return null;
+                          },
+                        ),
+                        SizedBox(height: 14),
+                        Row(
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: _pickImage,
+                              icon: Icon(Icons.upload_file),
+                              label: Text(_pickedImage == null ? 'Документы' : 'Фото выбрано'),
+                              style: ElevatedButton.styleFrom(
+                                  backgroundColor: _primaryColor,
+                                  foregroundColor: Colors.white,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))
+                              ),
+                            ),
+                            if (_pickedImage != null)
+                              Padding(
+                                padding: const EdgeInsets.only(left: 10),
+                                child: Icon(Icons.check_circle, color: Colors.green),
+                              ),
+                          ],
+                        ),
+                        SizedBox(height: 14),
+                        TextFormField(
+                          controller: _descriptionController,
+                          maxLines: 3,
+                          style: TextStyle(color: Colors.white),
+                          decoration: InputDecoration(
+                            labelText: 'Дополнительная информация',
+                            labelStyle: TextStyle(color: _secondaryTextColor),
+                            filled: true,
+                            fillColor: _textFieldFillColor,
+                            border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                          ),
+                          validator: (v) => null,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+                  child: Text('Отмена', style: TextStyle(color: _secondaryTextColor)),
+                ),
+                ElevatedButton(
+                  onPressed: _isLoading ? null : _submit,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _primaryColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  child: _isLoading
+                      ? SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+                      : Text('Отправить заявку'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
 
   Widget _buildActionButtons() {
     return Padding(
@@ -1338,7 +1542,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch, // Растягиваем кнопки
         children: [
-          OutlinedButton.icon( // Используем OutlinedButton для менее важного действия
+          ElevatedButton.icon(
+            icon: Icon(Icons.business_center_outlined, size: 20),
+            label: Text('Стать поставщиком'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: _primaryColor,
+              foregroundColor: Colors.white,
+              padding: EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              elevation: 0,
+            ),
+            onPressed: _showSupplierDialog,
+          ),
+          SizedBox(height: 12),
+          OutlinedButton.icon(
             icon: Icon(Icons.lock_reset_outlined, size: 20, color: _secondaryTextColor),
             label: Text('Сбросить пароль по Email', style: TextStyle(color: _secondaryTextColor)),
             style: OutlinedButton.styleFrom(
@@ -1360,7 +1577,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
             onPressed: _showChangePasswordDialog,
           ),
           SizedBox(height: 12),
-          // Кнопка выхода
+
           ElevatedButton.icon(
             icon: Icon(Icons.logout, size: 20),
             label: Text('Выйти из аккаунта'),
@@ -1370,10 +1587,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: EdgeInsets.symmetric(vertical: 12),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               elevation: 0, // Без тени
-              // side: BorderSide(color: _primaryColor.withOpacity(0.5)) // Можно добавить рамку
             ),
             onPressed: () async {
-              // Показываем диалог подтверждения выхода
+
               bool confirmLogout = await showDialog(
                 context: context,
                 builder: (context) => AlertDialog(
@@ -1384,23 +1600,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   actions: [
                     TextButton(
                       child: Text('Отмена', style: TextStyle(color: _secondaryTextColor)),
-                      onPressed: () => Navigator.of(context).pop(false), // Возвращаем false
+                      onPressed: () => Navigator.of(context).pop(false),
                     ),
                     TextButton(
                       child: Text('Выйти', style: TextStyle(color: _primaryColor)),
-                      onPressed: () => Navigator.of(context).pop(true), // Возвращаем true
+                      onPressed: () => Navigator.of(context).pop(true),
                     ),
                   ],
                 ),
-              ) ?? false; // Если диалог закрыли иначе, считаем что отмена (false)
+              ) ?? false;
 
               if (confirmLogout) {
                 await FirebaseService().logOut();
-                // Перенаправляем на экран входа или главный экран (в зависимости от логики приложения)
-                // Убедитесь, что после выхода пользователь не может вернуться назад в профиль
-                Navigator.of(context).pushNamedAndRemoveUntil('/login', (Route<dynamic> route) => false); // Пример перехода на /login
-                // или
-                // Navigator.of(context).pushNamedAndRemoveUntil('/productList', (Route<dynamic> route) => false);
+                Navigator.of(context).pushNamedAndRemoveUntil('/login', (Route<dynamic> route) => false);
               }
             },
           ),
@@ -1409,7 +1621,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // --- Основной Build метод ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1437,10 +1648,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: RefreshIndicator( // Добавляем возможность обновить данные свайпом вниз
         onRefresh: () async {
-          // Перезагружаем все данные
+
           await _fetchUserData();
           await _fetchUserOrderItems();
-          await _fetchSimilarProducts();
         },
         color: _primaryColor, // Цвет индикатора
         backgroundColor: _surfaceColor,
@@ -1457,14 +1667,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ),
                 _buildOrdersSection(), // Секция с историей заказов
                 _buildPurchaseHistorySection(),
-                _buildSimilarProductsSection(), // Секция с похожими товарами
+                _buildRecentlyViewedSection(),
                 _buildActionButtons(), // Секция с кнопками действий
               ],
             ),
           ),
         ),
       ),
-      // --- Нижняя навигационная панель (как в CartScreen) ---
+
       bottomNavigationBar: BottomNavigationBar(
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(

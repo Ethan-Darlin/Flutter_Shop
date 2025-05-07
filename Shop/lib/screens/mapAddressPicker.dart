@@ -10,7 +10,7 @@ class MapAddressPicker extends StatefulWidget {
 
 class _MapAddressPickerState extends State<MapAddressPicker> {
   late Future<List<Map<String, dynamic>>> _deliveryAddressesFuture;
-  LatLng? _selectedLocation; // Координаты выбранного адреса
+  LatLng? _selectedLocation;
 
   @override
   void initState() {
@@ -22,6 +22,9 @@ class _MapAddressPickerState extends State<MapAddressPicker> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
+        leading: BackButton(
+          color: Colors.white,
+        ),
         title: Text('Выберите адрес', style: TextStyle(color: Colors.white)),
         backgroundColor: const Color(0xFF18171c),
       ),
@@ -53,7 +56,7 @@ class _MapAddressPickerState extends State<MapAddressPicker> {
             children: [
               FlutterMap(
                 options: MapOptions(
-                  center: LatLng(53.9006, 27.5590), // Центр карты (Москва)
+                  center: LatLng(53.9006, 27.5590),
                   zoom: 12.0,
                 ),
                 children: [
@@ -108,7 +111,7 @@ class _MapAddressPickerState extends State<MapAddressPicker> {
                     ),
                     child: Text(
                       'Выбрать этот адрес',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold,color: Colors.white),
                     ),
                   ),
                 ),

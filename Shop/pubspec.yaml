@@ -54,7 +54,8 @@ dependencies:
   flutter_linkify: ^6.0.0
   app_links: ^3.1.0
   firebase_dynamic_links: ^6.1.5
-
+  firebase_messaging: ^15.2.5
+  flutter_launcher_icons: ^0.13.1
 
 
 
@@ -73,7 +74,10 @@ dev_dependencies:
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
-
+flutter_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/logo1.png"
 # The following section is specific to Flutter packages.
 flutter:
 

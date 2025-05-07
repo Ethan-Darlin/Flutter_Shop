@@ -2,13 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
-// Цвета темы
-const Color _backgroundColor = Color(0xFF18171c); // Фон
-const Color _surfaceColor = Color(0xFF1f1f24); // Цвет карточек, панелей
-const Color _primaryColor = Color(0xFFEE3A57); // Акцентный цвет
-const Color _secondaryTextColor = Color(0xFFa0a0a0); // Серый текст
-const Color _textFieldFillColor = Color(0xFF2a2a2e); // Заливка полей ввода
-const Color _errorColor = Color(0xFFD32F2F); // Темно-красный для ошибок
+const Color _backgroundColor = Color(0xFF18171c); 
+const Color _surfaceColor = Color(0xFF1f1f24); 
+const Color _primaryColor = Color(0xFFEE3A57); 
+const Color _secondaryTextColor = Color(0xFFa0a0a0); 
+const Color _textFieldFillColor = Color(0xFF2a2a2e); 
+const Color _errorColor = Color(0xFFD32F2F); 
 
 class QRScanPage extends StatefulWidget {
   @override
@@ -20,7 +19,7 @@ class _QRScanPageState extends State<QRScanPage> {
   String? scannedOrderId;
   Map<String, dynamic>? orderData;
   bool isScanning = true;
-  String? selectedStatus; // Выбранный статус
+  String? selectedStatus; 
 
   final List<String> _statusOptions = ['Возврат', 'Выдан', 'Доставлен', 'В пути'];
 
@@ -103,18 +102,18 @@ class _QRScanPageState extends State<QRScanPage> {
       appBar: AppBar(
         title: const Text(
           'Сканирование QR-кода',
-          style: TextStyle(color: Colors.white), // Белый текст заголовка
+          style: TextStyle(color: Colors.white), 
         ),
         backgroundColor: _surfaceColor,
         elevation: 0,
         iconTheme: IconThemeData(
-          color: Colors.white, // Белая иконка "Назад"
+          color: Colors.white, 
         ),
 
       ),
       body: Column(
         children: <Widget>[
-          // Секция сканирования
+
           Expanded(
             flex: 2,
             child: Stack(
@@ -175,7 +174,6 @@ class _QRScanPageState extends State<QRScanPage> {
             ),
           ),
 
-          // Секция отображения данных
           Expanded(
             flex: 3,
             child: Container(
@@ -217,7 +215,6 @@ class _QRScanPageState extends State<QRScanPage> {
         _buildInfoRow('Цена:', '${orderData!['price'] ?? 'Не указана'} ₽'),
         SizedBox(height: 20),
 
-        // Выпадающий список для выбора статуса
         DropdownButtonFormField<String>(
           value: selectedStatus,
           decoration: InputDecoration(
@@ -230,13 +227,13 @@ class _QRScanPageState extends State<QRScanPage> {
               borderSide: BorderSide.none,
             ),
           ),
-          dropdownColor: _backgroundColor, // Фон выпадающего меню
+          dropdownColor: _backgroundColor, 
           items: _statusOptions.map((status) {
             return DropdownMenuItem<String>(
               value: status,
               child: Text(
                 status,
-                style: TextStyle(color: Colors.white), // Белый текст внутри меню
+                style: TextStyle(color: Colors.white), 
               ),
             );
           }).toList(),
@@ -248,7 +245,6 @@ class _QRScanPageState extends State<QRScanPage> {
         ),
         SizedBox(height: 20),
 
-        // Кнопка подтверждения
         Center(
           child: ElevatedButton.icon(
             onPressed: _updateOrderStatus,

@@ -1,21 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:shop/firebase_service.dart'; // Убедись, что путь правильный
-import 'package:shop/screens/productListScreen.dart'; // Убедись, что путь правильный
-import 'package:shop/screens/profileScreen.dart'; // Убедись, что путь правильный
-import 'package:shop/screens/mapAddressPicker.dart'; // Убедись, что путь правильный
-// import 'dart:convert'; // Не используется напрямую в этом коде
-// import 'dart:typed_data'; // Не используется напрямую в этом коде
+import 'package:shop/firebase_service.dart'; 
+import 'package:shop/screens/productListScreen.dart'; 
+import 'package:shop/screens/profileScreen.dart'; 
+import 'package:shop/screens/mapAddressPicker.dart'; 
+
+
 import 'package:flutter/services.dart';
 
-// ==============================================================
-// Вспомогательные элементы для диалога оплаты
-// ==============================================================
+enum CardBrand { unknown, visa, mastercard, mir }
 
-// Перечисление для брендов карт
-enum CardBrand { unknown, visa, mastercard, mir } // Добавь mir, если нужно
 
-// Вспомогательная функция для определения бренда по номеру карты
 Widget getCardBrandIcon(String cardNumber) {
   String digitsOnly = cardNumber.replaceAll(' ', '');
   CardBrand brand = CardBrand.unknown;
@@ -27,19 +22,19 @@ Widget getCardBrandIcon(String cardNumber) {
     brand = CardBrand.mastercard;
   } else if (RegExp(r'^(220[0-4])').hasMatch(digitsOnly)) {
     brand = CardBrand
-        .mir; // Не забудь добавить case CardBrand.mir ниже, если используешь
+        .mir; 
   }
-  // Добавь другие проверки
+
 
   switch (brand) {
     case CardBrand.visa:
       try {
-        // Используй SizedBox для контроля размера и сохранения пропорций
+
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
           child: SizedBox(
               width: 30,
-              height: 20, // Примерные размеры, подбери
+              height: 20, 
               child: Image.asset('assets/images/visa_logo.png',
                   fit: BoxFit.contain)),
         );
@@ -53,7 +48,7 @@ Widget getCardBrandIcon(String cardNumber) {
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
           child: SizedBox(
               width: 30,
-              height: 20, // Примерные размеры, подбери
+              height: 20, 
               child: Image.asset('assets/images/mastercard_logo.png',
                   fit: BoxFit.contain)),
         );
@@ -61,13 +56,13 @@ Widget getCardBrandIcon(String cardNumber) {
         print("Error loading mastercard logo: $e");
         return Icon(Icons.credit_card, color: Colors.orange[800], size: 20);
       }
-    case CardBrand.mir: // Добавь этот case, если распознаешь МИР
+    case CardBrand.mir: 
       try {
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
           child: SizedBox(
               width: 30,
-              height: 20, // Примерные размеры, подбери
+              height: 20, 
               child: Image.asset('assets/images/mir_logo.png',
                   fit: BoxFit.contain)),
         );
@@ -80,13 +75,12 @@ Widget getCardBrandIcon(String cardNumber) {
           padding: const EdgeInsets.symmetric(horizontal: 8.0),
           child: Icon(Icons.credit_card,
               color: Colors.grey[600],
-              size: 24)); // Можно сделать size: 20 для единообразия
+              size: 24)); 
   }
 }
 
-// ==============================================================
-// Форматтеры ввода
-// ==============================================================
+
+
 
 class CardNumberInputFormatter extends TextInputFormatter {
   @override
@@ -165,9 +159,8 @@ class ExpirationDateInputFormatter extends TextInputFormatter {
   }
 }
 
-// ==============================================================
-// Основной виджет экрана корзины
-// ==============================================================
+
+
 
 class CartScreen extends StatefulWidget {
   @override
@@ -208,7 +201,7 @@ class _CartScreenState extends State<CartScreen> {
     _cartItemsFuture.then((items) {
       _calculateTotalPrice(items);
       if (mounted) {
-        setState(() {}); // Перерисовка интерфейса
+        setState(() {}); 
       }
     }).catchError((error) {
       print("Error loading cart items: $error");
@@ -299,9 +292,8 @@ class _CartScreenState extends State<CartScreen> {
     _showPaymentDialog(_totalPrice, deliveryId, cartItems);
   }
 
-  // ==============================================================
-  // !!! ДИАЛОГ ОПЛАТЫ С ИЗМЕНЕННЫМ MARGIN У SNACKBAR !!!
-  // ==============================================================
+
+
   void _showPaymentDialog(
       double amount, String deliveryId, List<Map<String, dynamic>> cartItems) {
     final TextEditingController cardNumberController = TextEditingController();
@@ -310,9 +302,8 @@ class _CartScreenState extends State<CartScreen> {
     final FocusNode expirationFocusNode = FocusNode();
     final FocusNode cvvFocusNode = FocusNode();
 
-    // Переменные для учета скидки
     double updatedAmount = amount;
-    bool useLoyaltyPoints = false; // Переключатель
+    bool useLoyaltyPoints = false; 
     double loyaltyPoints = double.tryParse(userData?['loyalty_points'] ?? '0') ?? 0.0;
 
     showDialog(
@@ -354,7 +345,6 @@ class _CartScreenState extends State<CartScreen> {
               );
             }
 
-            // Обновляем сумму с учетом баллов
             void updateAmount() {
               if (useLoyaltyPoints) {
                 updatedAmount =
@@ -368,15 +358,31 @@ class _CartScreenState extends State<CartScreen> {
               backgroundColor: const Color(0xFF1f1f24),
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12.0)),
-              title: const Text("Оплата картой",
-                  style:
-                  TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+              title: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  const Text(
+                    "Оплата картой",
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                    ),
+                  ),
+                  Icon(
+                    Icons.verified_user_outlined,
+                    size: 22, 
+                    color: Colors.white,
+                  ),
+                ],
+              ),
               content: SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    // Сумма к оплате с учетом скидки
+
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -392,7 +398,6 @@ class _CartScreenState extends State<CartScreen> {
                     ),
                     const SizedBox(height: 15),
 
-                    // Переключатель "Списать баллы лояльности"
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -404,7 +409,7 @@ class _CartScreenState extends State<CartScreen> {
                           onChanged: (newValue) {
                             setStateDialog(() {
                               useLoyaltyPoints = newValue;
-                              updateAmount(); // Пересчитываем сумму
+                              updateAmount(); 
                             });
                           },
                           activeColor: const Color(0xFFEE3A57),
@@ -412,14 +417,12 @@ class _CartScreenState extends State<CartScreen> {
                       ],
                     ),
 
-                    // Отображение текущих баллов
                     if (loyaltyPoints > 0)
                       Text("Ваши баллы: ${loyaltyPoints.toStringAsFixed(2)}",
                           style: const TextStyle(
                               color: Colors.grey, fontSize: 14)),
                     const SizedBox(height: 20),
 
-                    // --- Поле ввода номера карты ---
                     TextFormField(
                         controller: cardNumberController,
                         style: const TextStyle(
@@ -442,10 +445,9 @@ class _CartScreenState extends State<CartScreen> {
                         }),
                     const SizedBox(height: 15),
 
-                    // --- Срок действия и CVV ---
-                    // --- Срок действия и CVV ---
+
                     Row(
-                      crossAxisAlignment: CrossAxisAlignment.start, // Это важно для выравнивания по верху
+                      crossAxisAlignment: CrossAxisAlignment.start, 
                       children: [
                         Expanded(
                           child: TextFormField(
@@ -456,7 +458,7 @@ class _CartScreenState extends State<CartScreen> {
                             decoration: inputDecoration(
                               "ММ/ГГ",
                               "12/28",
-                              prefixIcon: const Icon(Icons.calendar_today, color: Colors.grey, size: 22), // Дополнительно, если нужно
+                              prefixIcon: const Icon(Icons.calendar_today, color: Colors.grey, size: 22), 
                             ),
                             keyboardType: TextInputType.number,
                             inputFormatters: [
@@ -477,7 +479,7 @@ class _CartScreenState extends State<CartScreen> {
                             decoration: inputDecoration(
                               "CVV",
                               "•••",
-                              prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey, size: 22), // Дополнительно, если нужно
+                              prefixIcon: const Icon(Icons.lock_outline, color: Colors.grey, size: 22), 
                             ),
                             keyboardType: TextInputType.number,
                             maxLength: 3,
@@ -496,20 +498,35 @@ class _CartScreenState extends State<CartScreen> {
                   onPressed: () {
                     Navigator.of(context).pop();
                   },
-                  child: const Text("Отмена",
-                      style: TextStyle(color: Colors.grey)),
+                  child: const Text(
+                    "Отмена",
+                    style: TextStyle(color: Colors.grey),
+                  ),
                 ),
                 ElevatedButton.icon(
-                  icon: const Icon(Icons.verified_user_outlined, size: 18),
-                  label: Text("Оплатить ${formatPrice(updatedAmount)}"),
+
+                  label: Text(
+                    "Оплатить ${formatPrice(updatedAmount)}",
+                    style: const TextStyle(
+                      color: Colors.white, 
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFEE3A57), 
+                    foregroundColor: Colors.white, 
+                    elevation: 0,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
                   onPressed: () {
                     if (updatedAmount > 0) {
-                      // Подтверждаем заказ с учетом скидки
                       Navigator.of(context).pop();
                       _confirmOrder(
                           deliveryId, cartItems, useLoyaltyPoints, loyaltyPoints);
                     } else {
-                      // Сумма равна 0, просто обнуляем баллы
                       FirebaseService().updateUserData({'loyalty_points': "0"});
                       Navigator.of(context).pop();
                       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -527,9 +544,7 @@ class _CartScreenState extends State<CartScreen> {
   }
 
 
-  // ==============================================================
-  // !!! ОБНОВЛЕННАЯ ФУНКЦИЯ ВАЛИДАЦИИ !!!
-  // ==============================================================
+
   bool _validatePaymentFields(
       String cardNumber, String expirationDate, String cvv) {
     final digitsOnlyCard = cardNumber.replaceAll(" ", "");
@@ -592,52 +607,47 @@ class _CartScreenState extends State<CartScreen> {
         });
 
     try {
-      // Если баллы используются, обнуляем их
+
       if (useLoyaltyPoints) {
         await FirebaseService().updateUserData({'loyalty_points': "0"});
         print("Баллы лояльности списаны.");
       }
 
-      // Рассчитываем итоговую сумму с учетом скидки
       double finalPrice = _totalPrice - (useLoyaltyPoints ? loyaltyPoints : 0);
-      finalPrice = finalPrice.clamp(0.0, double.infinity); // Убеждаемся, что сумма >= 0
+      finalPrice = finalPrice.clamp(0.0, double.infinity); 
 
-      // Создаем заказ
       await FirebaseService().placeOrder(cartItems, finalPrice, deliveryId);
 
-      // Обновляем запасы товаров в Firestore
       for (var item in cartItems) {
         final productId = item['product_id'];
         final selectedSize = item['selected_size'];
         final selectedColor = item['selected_color'];
         final quantityBought = item['quantity'];
 
-        // Обновляем количество для конкретного размера и цвета
         await FirebaseService().updateProductStock(
           productId,
           selectedSize,
           selectedColor,
-          -quantityBought, // Уменьшаем количество
+          -quantityBought, 
         );
       }
 
-      // Очищаем корзину
       await FirebaseService().clearCart();
 
       print('Заказ успешно оформлен.');
-      Navigator.of(context).pop(); // Закрываем индикатор загрузки
+      Navigator.of(context).pop(); 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: const Text('Заказ успешно оформлен!'),
             backgroundColor: Colors.green,
             behavior: SnackBarBehavior.floating));
-        _loadCartData(); // Перезагружаем данные корзины
+        _loadCartData(); 
         setState(() {
           _selectedDeliveryId = null;
         });
       }
     } catch (e) {
-      Navigator.of(context).pop(); // Закрываем индикатор загрузки
+      Navigator.of(context).pop(); 
       print('Ошибка оформления заказа: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -648,7 +658,6 @@ class _CartScreenState extends State<CartScreen> {
     }
   }
 
-  // Навигация по нижней панели
   void onItemTapped(int index) {
     if (_selectedIndex == index) return;
     setState(() {
@@ -678,7 +687,7 @@ class _CartScreenState extends State<CartScreen> {
     try {
       await FirebaseService().updateCartItem(docId, {'quantity': newQuantity});
       print('Количество обновлено в Firestore.');
-      _loadCartData(); // Перезагрузка корзины
+      _loadCartData(); 
     } catch (e) {
       print('Ошибка обновления количества: $e');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
@@ -687,32 +696,32 @@ class _CartScreenState extends State<CartScreen> {
       ));
     }
   }
-  // ==============================================================
-  // Метод Build виджета CartScreen
-  // ==============================================================
+
+
+
   @override
   Widget build(BuildContext context) {
-    // Весь код метода build остается БЕЗ ИЗМЕНЕНИЙ по сравнению с твоим последним примером
-    // ... (вставь сюда свой код метода build от Scaffold(...) до конца) ...
+
+
     return Scaffold(
       backgroundColor: Color(0xFF18171c),
-      // Темный фон
+
       appBar: AppBar(
         title: Text('Корзина', style: TextStyle(color: Colors.white)),
-        backgroundColor: Color(0xFF18171c), // Фон AppBar в цвет фона Scaffold
-        elevation: 0, // Убираем тень
-        automaticallyImplyLeading: false, // Убираем кнопку назад по умолчанию
+        backgroundColor: Color(0xFF18171c), 
+        elevation: 0, 
+        automaticallyImplyLeading: false, 
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _cartItemsFuture,
         builder: (context, snapshot) {
-          // --- Состояния загрузки, ошибки, пустой корзины ---
+
           if (snapshot.connectionState == ConnectionState.waiting) {
             return Center(
                 child: CircularProgressIndicator(color: Colors.white));
           } else if (snapshot.hasError) {
             print(
-                "Error in FutureBuilder: ${snapshot.error}"); // Логируем ошибку
+                "Error in FutureBuilder: ${snapshot.error}"); 
             return Center(
               child: Padding(
                 padding: const EdgeInsets.all(20.0),
@@ -723,14 +732,14 @@ class _CartScreenState extends State<CartScreen> {
               ),
             );
           } else if (!snapshot.hasData || snapshot.data!.isEmpty) {
-            // --- Отображение пустой корзины ---
+
             return Center(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(Icons.remove_shopping_cart_outlined,
                       size: 80,
-                      color: Colors.grey[700]), // Иконка пустой корзины
+                      color: Colors.grey[700]), 
                   SizedBox(height: 16),
                   Text('Ваша корзина пуста',
                       style: TextStyle(color: Colors.grey[400], fontSize: 18)),
@@ -739,7 +748,7 @@ class _CartScreenState extends State<CartScreen> {
                       style: TextStyle(color: Colors.grey[600], fontSize: 14)),
                   SizedBox(height: 25),
                   ElevatedButton(
-                    onPressed: () => onItemTapped(0), // Переход на главную
+                    onPressed: () => onItemTapped(0), 
                     child: Text('Перейти к товарам'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Color(0xFFEE3A57),
@@ -755,15 +764,14 @@ class _CartScreenState extends State<CartScreen> {
             );
           }
 
-          // --- Отображение корзины с товарами ---
           final cartItems = snapshot.data!;
           return Column(
             children: [
-              // --- Выбор Адреса Доставки ---
+
               Padding(
                 padding: const EdgeInsets.fromLTRB(16.0, 12.0, 16.0, 8.0),
                 child: FutureBuilder<List<Map<String, dynamic>>>(
-                  future: FirebaseService().getAllDeliveryAddresses(), // Загружаем все адреса
+                  future: FirebaseService().getAllDeliveryAddresses(), 
                   builder: (context, snapshot) {
                     if (snapshot.connectionState == ConnectionState.waiting) {
                       return Container(
@@ -814,7 +822,7 @@ class _CartScreenState extends State<CartScreen> {
 
                     return Row(
                       children: [
-                        // Выпадающий список для выбора адреса
+
                         Expanded(
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 5.0),
@@ -838,7 +846,7 @@ class _CartScreenState extends State<CartScreen> {
                                     color: Colors.grey[400]),
                                 onChanged: (String? newValue) {
                                   setState(() {
-                                    _selectedDeliveryId = newValue; // Сохраняем выбранный адрес
+                                    _selectedDeliveryId = newValue; 
                                   });
                                 },
                                 items: addresses.map<DropdownMenuItem<String>>((address) {
@@ -855,7 +863,7 @@ class _CartScreenState extends State<CartScreen> {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        // Кнопка для открытия карты
+
                         GestureDetector(
                           onTap: () async {
                             final LatLng? selectedLocation = await Navigator.push(
@@ -867,12 +875,12 @@ class _CartScreenState extends State<CartScreen> {
 
                             if (selectedLocation != null) {
                               setState(() {
-                                // Находим адрес, соответствующий координатам, и устанавливаем его как выбранный
+
                                 final selectedAddress = addresses.firstWhere(
                                       (address) =>
                                   address['latitude'] == selectedLocation.latitude &&
                                       address['longitude'] == selectedLocation.longitude,
-                                  orElse: () => {}, // Возвращаем пустую карту вместо null
+                                  orElse: () => {}, 
                                 );
 
                                 if (selectedAddress.isNotEmpty) {
@@ -897,8 +905,7 @@ class _CartScreenState extends State<CartScreen> {
                 ),
               ),
 
-              // --- Список Товаров ---
-              // --- Список Товаров ---
+
               Expanded(
                 child: ListView.builder(
                   padding: EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 90),
@@ -906,9 +913,9 @@ class _CartScreenState extends State<CartScreen> {
                   itemBuilder: (context, index) {
                     final item = cartItems[index];
                     final docId = item['docId'];
-                    final maxQuantity = item['available_quantity'] ?? 1; // Максимальное количество товара
+                    final maxQuantity = item['available_quantity'] ?? 1; 
                     final currentQuantity = item['quantity'] ?? 1;
-                    // !!! ДОБАВЬТЕ ЭТОТ PRINT !!!
+
                     print('--- Item Build ---');
                     print('Name: ${item['name']}');
                     print('Doc ID: $docId');
@@ -944,12 +951,12 @@ class _CartScreenState extends State<CartScreen> {
                                             style: TextStyle(
                                                 color: Colors.grey[400], fontSize: 14)),
                                         SizedBox(height: 8),
-                                        // --- Элемент выбора количества ---
-                                        // В методе build, внутри ListView.builder, замените Row с кнопками на это:
+
+
                                         Row(
                                           mainAxisAlignment: MainAxisAlignment.start,
                                           children: [
-                                            // Кнопка уменьшения количества
+
                                             GestureDetector(
                                               onTap: currentQuantity > 1
                                                   ? () async {
@@ -970,7 +977,7 @@ class _CartScreenState extends State<CartScreen> {
                                               ),
                                             ),
                                             const SizedBox(width: 12),
-                                            // Текущее количество
+
                                             Text(
                                               '$currentQuantity',
                                               style: const TextStyle(
@@ -980,7 +987,7 @@ class _CartScreenState extends State<CartScreen> {
                                               ),
                                             ),
                                             const SizedBox(width: 12),
-                                            // Кнопка увеличения количества
+
                                             GestureDetector(
                                               onTap: currentQuantity < maxQuantity
                                                   ? () async {
@@ -1021,7 +1028,7 @@ class _CartScreenState extends State<CartScreen> {
                                     showDialog(
                                         context: context,
                                         builder: (BuildContext ctx) {
-                                          /* Диалог подтверждения удаления */
+
                                           return AlertDialog(
                                               backgroundColor: Color(0xFF1f1f24),
                                               shape: RoundedRectangleBorder(
@@ -1065,11 +1072,11 @@ class _CartScreenState extends State<CartScreen> {
           );
         },
       ),
-      // --- Нижняя панель с Итого и Кнопкой Заказа ---
+
       bottomSheet: FutureBuilder<List<Map<String, dynamic>>>(
           future: _cartItemsFuture,
           builder: (context, snapshot) {
-            // ... (Код bottomSheet без изменений) ...
+
             if (!snapshot.hasData ||
                 snapshot.data!.isEmpty ||
                 snapshot.connectionState != ConnectionState.done) {
@@ -1128,9 +1135,9 @@ class _CartScreenState extends State<CartScreen> {
               ]),
             );
           }),
-      // --- Нижняя навигационная панель ---
+
       bottomNavigationBar: BottomNavigationBar(
-        // ... (Код BottomNavigationBar без изменений) ...
+
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
               icon: Icon(Icons.home_outlined),
@@ -1157,4 +1164,4 @@ class _CartScreenState extends State<CartScreen> {
       ),
     );
   }
-} // Конец класса _CartScreenState
+} 
