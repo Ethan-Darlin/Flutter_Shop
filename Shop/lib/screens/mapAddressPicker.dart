@@ -20,13 +20,24 @@ class _MapAddressPickerState extends State<MapAddressPicker> {
 
   @override
   Widget build(BuildContext context) {
+    const Color _surfaceColor = Color(0xFF1f1f24);
     return Scaffold(
       appBar: AppBar(
-        leading: BackButton(
-          color: Colors.white,
+        backgroundColor: _surfaceColor,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text('Выберите адрес', style: TextStyle(color: Colors.white)),
-        backgroundColor: const Color(0xFF18171c),
+        elevation: 0,
+        title: const Text(
+          'Выберите адрес',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        centerTitle: false,
       ),
       body: FutureBuilder<List<Map<String, dynamic>>>(
         future: _deliveryAddressesFuture,

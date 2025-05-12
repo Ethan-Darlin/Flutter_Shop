@@ -3,10 +3,20 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:shop/firebase_service.dart';
+import 'package:shop/screens/addCategoryScreen.dart';
 import 'package:shop/screens/auth_screen.dart';
+import 'package:shop/screens/createAddressScreen.dart';
 import 'package:shop/screens/productListScreen.dart';
 import 'package:shop/screens/productDetailScreen.dart';
 import 'package:shop/screens/user_info_screen.dart';
+import 'package:shop/screens/profileScreen.dart';
+import 'package:shop/screens/myProductsScreen.dart';
+import 'package:shop/screens/addProductScreen.dart';
+import 'package:shop/screens/editProductScreen.dart';
+import 'package:shop/screens/adminProductModerationScreen.dart';
+import 'package:shop/screens/adminReviewsScreen.dart';
+import 'package:shop/screens/supplierApplicationsScreen.dart';
+import 'package:shop/screens/scan_page.dart';
 import 'firebase_options.dart';
 import 'package:app_links/app_links.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -67,7 +77,6 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _initDeepLinks() async {
-
     _appLinks.uriLinkStream.listen((uri) {
       if (uri != null) _navigateFromDeepLink(uri);
     });
@@ -77,8 +86,9 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _navigateFromDeepLink(Uri uri) {
-
-    if (uri.scheme == 'myapp' && uri.host == 'product' && uri.queryParameters.containsKey('productId')) {
+    if (uri.scheme == 'myapp' &&
+        uri.host == 'product' &&
+        uri.queryParameters.containsKey('productId')) {
       final productId = uri.queryParameters['productId'];
       if (productId != null) {
         kNavigatorKey.currentState?.push(
@@ -88,7 +98,6 @@ class _MyAppState extends State<MyApp> {
         );
       }
     }
-
   }
 
   @override
@@ -101,7 +110,27 @@ class _MyAppState extends State<MyApp> {
       ),
       home: AuthWrapper(),
       routes: {
+        // Покупательские экраны
         '/products': (context) => ProductListScreen(),
+        '/profile': (context) => ProfileScreen(),
+
+        // Поставщик (Supplier)
+        '/my-products': (context) => MyProductsScreen(),
+        '/add-product': (context) => AddProductScreen(
+          creatorId: FirebaseAuth.instance.currentUser?.uid ?? '',
+        ),
+        // Если нужен EditProductScreen через pushNamed — добавь отдельный маршрут:
+        // '/edit-product': (context) => EditProductScreen(...), // смотри как ты передаёшь параметры
+
+        // Продавец (Seller)
+        '/qr-scan': (context) => QRScanPage(),
+
+        // Админ
+        '/admin-moderation': (context) => AdminProductModerationScreen(),
+        '/admin-reviews': (context) => AdminReviewsScreen(),
+        '/admin-supplier-applications': (context) => SupplierApplicationsScreen(),
+        '/admin-category': (context) => AddCategoryScreen(),
+        '/admin-address': (context) => CreateAddressScreen()
       },
     );
   }
@@ -118,11 +147,8 @@ class AuthWrapper extends StatelessWidget {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());
         } else if (snapshot.hasData) {
-          final User user = snapshot.data!;
-          return UserInfoScreen(
-            userId: user.uid,
-            emailVerified: user.emailVerified,
-          );
+          // Сразу рендерим ProfileScreen после входа
+          return ProfileScreen();
         } else {
           return AuthScreen();
         }

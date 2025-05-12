@@ -62,8 +62,8 @@ class _AddCategoryScreenState extends State<AddCategoryScreen> {
           'Добавить категорию',
           style: TextStyle(
             color: Colors.white,
-            fontWeight: FontWeight.w600,
-            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
           ),
         ),
         iconTheme: IconThemeData(color: Colors.white),

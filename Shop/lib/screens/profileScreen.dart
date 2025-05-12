@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:shop/firebase_service.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shop/screens/cartScreen.dart';
@@ -1628,7 +1629,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(
         title: Text(
           'Личный кабинет',
-          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
         ),
         backgroundColor: _backgroundColor,
         elevation: 0,
@@ -1665,6 +1670,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: _buildUserInfoSection(), // Секция с информацией о пользователе
                 ),
+                _buildRolePanel(context),
                 _buildOrdersSection(), // Секция с историей заказов
                 _buildPurchaseHistorySection(),
                 _buildRecentlyViewedSection(),
@@ -1701,6 +1707,171 @@ class _ProfileScreenState extends State<ProfileScreen> {
         selectedFontSize: 12,
         unselectedFontSize: 12,
         onTap: onItemTapped,
+      ),
+    );
+  }
+  Widget _buildRolePanel(BuildContext context) {
+    final String? role = (userData?['role'] ?? userData?['status'])?.toString()?.toLowerCase();
+
+    if (role == null) return SizedBox.shrink();
+
+    switch (role) {
+      case 'admin':
+        return _buildAdminPanel(context);
+      case 'supplier':
+        return _buildSupplierPanel(context);
+      case 'seller':
+        return _buildSellerPanel(context);
+      default:
+        return SizedBox.shrink();
+    }
+  }
+// Панель для администратора (admin)
+  Widget _buildAdminPanel(BuildContext context) {
+    return Card(
+      color: _surfaceColor,
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Панель администратора', style: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold, fontSize: 16)),
+            SizedBox(height: 12),
+            ElevatedButton.icon(
+              icon: Icon(Icons.verified_user, color: Colors.white),
+              label: Text('Модерация товаров'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white, // <-- вот эта строка!
+              ),
+              onPressed: () {
+                Navigator.pushNamed(context, '/admin-moderation');
+              },
+            ),
+            SizedBox(height: 8),
+            ElevatedButton.icon(
+              icon: Icon(Icons.comment, color: Colors.white),
+              label: Text('Модерация комментариев'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white, // <-- вот эта строка!
+              ),
+              onPressed: () {
+                Navigator.pushNamed(context, '/admin-reviews');
+              },
+            ),
+            SizedBox(height: 8),
+            ElevatedButton.icon(
+              icon: Icon(Icons.assignment_ind, color: Colors.white),
+              label: Text('Заявки поставщиков'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white, // <-- вот эта строка!
+              ),
+              onPressed: () {
+                Navigator.pushNamed(context, '/admin-supplier-applications');
+              },
+            ),
+            SizedBox(height: 8),
+            ElevatedButton.icon(
+              icon: Icon(Icons.layers, color: Colors.white),
+              label: Text('Добавить категорию'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.pushNamed(context, '/admin-category');
+              },
+            ),
+            SizedBox(height: 8),
+            ElevatedButton.icon(
+              icon: Icon(Icons.location_on, color: Colors.white),
+              label: Text('Добавить адрес'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              onPressed: () {
+                Navigator.pushNamed(context, '/admin-address');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+// Панель для поставщика (supplier)
+  Widget _buildSupplierPanel(BuildContext context) {
+    return Card(
+      color: _surfaceColor,
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Панель поставщика', style: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold, fontSize: 16)),
+            SizedBox(height: 12),
+            ElevatedButton.icon(
+              icon: Icon(Icons.add_business, color: Colors.white),
+              label: Text('Добавить товар'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white, // <-- вот эта строка!
+              ),
+              onPressed: () {
+                Navigator.pushNamed(context, '/add-product');
+              },
+            ),
+            SizedBox(height: 8),
+            ElevatedButton.icon(
+              icon: Icon(Icons.list_alt, color: Colors.white),
+              label: Text('Мои товары'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white, // <-- вот эта строка!
+              ),
+              onPressed: () {
+                Navigator.pushNamed(context, '/my-products');
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+// Панель для продавца (seller)
+  Widget _buildSellerPanel(BuildContext context) {
+    return Card(
+      color: _surfaceColor,
+      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('Панель продавца', style: TextStyle(color: _primaryColor, fontWeight: FontWeight.bold, fontSize: 16)),
+            SizedBox(height: 12),
+            ElevatedButton.icon(
+              icon: Icon(Icons.qr_code_scanner, color: Colors.white),
+              label: Text('Сканировать QR'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _primaryColor,
+                foregroundColor: Colors.white, // <-- вот эта строка!
+              ),
+              onPressed: () {
+                Navigator.pushNamed(context, '/qr-scan');
+              },
+            ),
+          ],
+        ),
       ),
     );
   }

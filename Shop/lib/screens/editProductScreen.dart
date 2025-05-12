@@ -18,11 +18,7 @@ class ProductColor {
   XFile? imageFile;
   String? imageUrl;
 
-  ProductColor({
-    this.name = '',
-    this.imageFile,
-    this.imageUrl,
-  });
+  ProductColor({this.name = '', this.imageFile, this.imageUrl});
 
   bool get isValid => name.trim().isNotEmpty;
   bool get hasImageForUpload => imageFile != null;
@@ -43,16 +39,17 @@ class SizeVariant {
   bool get isValid => size.trim().isNotEmpty;
 }
 
-class AddProductScreen extends StatefulWidget {
+class EditProductScreen extends StatefulWidget {
+  final String productDocId;
   final String creatorId;
 
-  AddProductScreen({required this.creatorId, Key? key}) : super(key: key);
+  const EditProductScreen({required this.productDocId, required this.creatorId, Key? key}) : super(key: key);
 
   @override
-  _AddProductScreenState createState() => _AddProductScreenState();
+  State<EditProductScreen> createState() => _EditProductScreenState();
 }
 
-class _AddProductScreenState extends State<AddProductScreen> {
+class _EditProductScreenState extends State<EditProductScreen> {
   static const double kFieldSpacing = 16.0;
 
   final _formKey = GlobalKey<FormState>();
@@ -61,7 +58,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
   double _price = 0.0;
   int _selectedCategoryId = -1;
   XFile? _mainImageFile;
-  int _newProductId = 0;
+  String? _mainImageUrl;
   List<Map<String, dynamic>> _categories = [];
   String _brand = '';
   String _material = '';
@@ -84,6 +81,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
   void initState() {
     super.initState();
     _fetchCategories();
+    _loadProduct();
   }
 
   Future<void> _fetchCategories() async {
@@ -107,12 +105,54 @@ class _AddProductScreenState extends State<AddProductScreen> {
     }
   }
 
+  Future<void> _loadProduct() async {
+    setState(() => _isLoading = true);
+    try {
+      final doc = await FirebaseService().firestore.collection('products').doc(widget.productDocId).get();
+      if (!doc.exists) throw Exception("Товар не найден");
+      final data = doc.data()!;
+      _name = data['name'] ?? '';
+      _description = data['description'] ?? '';
+      _price = (data['price'] ?? 0).toDouble();
+      _selectedCategoryId = data['category_id'] ?? -1;
+      _mainImageUrl = data['main_image_url'];
+      _brand = data['brand'] ?? '';
+      _material = data['material'] ?? '';
+      _popularityScore = data['popularity_score'] ?? 0;
+      _discount = data['discount'] ?? 0;
+      _weight = (data['weight'] ?? 0).toDouble();
+      _season = data['season'] ?? '';
+      _selectedGender = data['gender'];
+      // цвета
+      final colorsMap = Map<String, dynamic>.from(data['colors'] ?? {});
+      _productColors = colorsMap.entries.map((e) => ProductColor(name: e.key, imageUrl: e.value as String?)).toList();
+      // размеры
+      final sizesMap = Map<String, dynamic>.from(data['sizes'] ?? {});
+      _sizeVariants = sizesMap.entries.map((sizeEntry) {
+        final size = sizeEntry.key;
+        final colorQuantities = sizeEntry.value['color_quantities'] as Map<String, dynamic>? ?? {};
+        return SizeVariant(
+          size: size,
+          colorQuantities: colorQuantities.entries.map((cq) => SizeColorQuantity(colorName: cq.key, quantity: (cq.value ?? 0) as int)).toList(),
+        );
+      }).toList();
+      setState(() {});
+    } catch (e) {
+      print('Ошибка загрузки товара: $e');
+      _showErrorSnackBar('Ошибка загрузки товара: $e');
+    } finally {
+      setState(() => _isLoading = false);
+    }
+  }
+
+  // --- Остальной код такой же, как у AddProductScreen, только изменяем firestore update
   Future<void> _pickMainImage() async {
     try {
       final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 50);
       if (pickedFile != null && mounted) {
         setState(() {
           _mainImageFile = pickedFile;
+          _mainImageUrl = null; // после выбора файла, старый url уже не показываем
         });
       }
     } catch (e) {
@@ -122,24 +162,17 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   void _addProductColor() {
-    if (mounted) {
-      setState(() {
-        _productColors.add(ProductColor());
-      });
-    }
+    setState(() => _productColors.add(ProductColor()));
   }
 
   void _removeProductColor(int index) {
-    if (mounted) {
-      String removedColorName = _productColors[index].name.trim();
-      setState(() {
-        _productColors.removeAt(index);
-        for (var sizeVariant in _sizeVariants) {
-          sizeVariant.colorQuantities.removeWhere((cq) => cq.colorName == removedColorName);
-        }
-      });
-      setState(() {});
-    }
+    String removedColorName = _productColors[index].name.trim();
+    setState(() {
+      _productColors.removeAt(index);
+      for (var sizeVariant in _sizeVariants) {
+        sizeVariant.colorQuantities.removeWhere((cq) => cq.colorName == removedColorName);
+      }
+    });
   }
 
   Future<void> _pickProductColorImage(int colorIndex) async {
@@ -158,42 +191,30 @@ class _AddProductScreenState extends State<AddProductScreen> {
   }
 
   void _addSizeEntry() {
-    if (mounted) {
-      setState(() {
-        _sizeVariants.add(SizeVariant(size: '', colorQuantities: []));
-      });
-    }
+    setState(() => _sizeVariants.add(SizeVariant(size: '', colorQuantities: [])));
   }
 
   void _removeSizeEntry(int index) {
-    if (mounted) {
-      setState(() {
-        _sizeVariants.removeAt(index);
-      });
-    }
+    setState(() => _sizeVariants.removeAt(index));
   }
 
   void _addColorQuantityToSize(int sizeIndex) {
-    if (mounted) {
-      List<String> availableColorNames = _getAvailableColorsForSize(sizeIndex);
-      if (availableColorNames.isEmpty) {
-        _showErrorSnackBar('Все определенные цвета уже добавлены к этому размеру или нет определенных цветов.');
-        return;
-      }
-      setState(() {
-        _sizeVariants[sizeIndex].colorQuantities.add(
-            SizeColorQuantity(colorName: availableColorNames.first, quantity: 0)
-        );
-      });
+    List<String> availableColorNames = _getAvailableColorsForSize(sizeIndex);
+    if (availableColorNames.isEmpty) {
+      _showErrorSnackBar('Все определенные цвета уже добавлены к этому размеру или нет определенных цветов.');
+      return;
     }
+    setState(() {
+      _sizeVariants[sizeIndex].colorQuantities.add(
+          SizeColorQuantity(colorName: availableColorNames.first, quantity: 0)
+      );
+    });
   }
 
   void _removeColorQuantityFromSize(int sizeIndex, int colorQuantityIndex) {
-    if (mounted) {
-      setState(() {
-        _sizeVariants[sizeIndex].colorQuantities.removeAt(colorQuantityIndex);
-      });
-    }
+    setState(() {
+      _sizeVariants[sizeIndex].colorQuantities.removeAt(colorQuantityIndex);
+    });
   }
 
   List<String> _getAvailableColorsForSize(int sizeIndex) {
@@ -208,26 +229,6 @@ class _AddProductScreenState extends State<AddProductScreen> {
     return definedColors.difference(colorsInThisSize).toList()..sort();
   }
 
-  Future<void> _generateNewProductId() async {
-    try {
-      QuerySnapshot snapshot = await FirebaseService().firestore.collection('products')
-          .orderBy('product_id', descending: true)
-          .limit(1)
-          .get();
-      if (snapshot.docs.isNotEmpty) {
-        var data = snapshot.docs.first.data() as Map<String, dynamic>?;
-        int lastId = data?['product_id'] as int? ?? 0;
-        _newProductId = lastId + 1;
-      } else { _newProductId = 1; }
-      if (_newProductId <= 0) throw Exception("Не удалось сгенерировать корректный ID продукта.");
-    } catch (e) {
-      print("Ошибка генерации ID продукта: $e");
-      _newProductId = 0;
-      _showErrorSnackBar('Ошибка генерации ID продукта: $e');
-      throw e;
-    }
-  }
-
   Future<String?> _uploadImageToImageKit(XFile imageFile) async {
     var request = http.MultipartRequest('POST', Uri.parse(_imageKitUploadUrl));
     String credentials = base64Encode(utf8.encode('$_imageKitPrivateKey:'));
@@ -236,32 +237,28 @@ class _AddProductScreenState extends State<AddProductScreen> {
     request.fields['fileName'] = imageFile.name;
     request.fields['useUniqueFileName'] = 'true';
     request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
-
     try {
       var streamedResponse = await request.send();
       var response = await http.Response.fromStream(streamedResponse);
       if (response.statusCode == 200) {
         var responseData = jsonDecode(response.body);
-        print('ImageKit Upload Success: ${responseData['url']}');
         return responseData['url'];
       } else {
-        print('Ошибка загрузки в ImageKit (${response.statusCode}): ${response.body}');
         throw Exception('Ошибка загрузки в ImageKit: Статус ${response.statusCode}');
       }
     } catch (e) {
-      print('Исключение при загрузке в ImageKit: $e');
       throw Exception('Не удалось подключиться к сервису изображений: $e');
     }
   }
 
-  Future<void> _addProduct() async {
+  Future<void> _updateProduct() async {
     if (!_formKey.currentState!.validate()) {
       _showErrorSnackBar('Пожалуйста, исправьте ошибки в форме.');
       return;
     }
     _formKey.currentState!.save();
 
-    if (_mainImageFile == null) {
+    if (_mainImageFile == null && (_mainImageUrl == null || _mainImageUrl!.isEmpty)) {
       _showErrorSnackBar('Необходимо выбрать основное изображение продукта.');
       return;
     }
@@ -314,20 +311,19 @@ class _AddProductScreenState extends State<AddProductScreen> {
       }
     }
 
-    if (mounted) setState(() => _isLoading = true);
+    setState(() => _isLoading = true);
 
-    String? mainImageUrl;
+    String? mainImageUrl = _mainImageUrl;
     Map<String, String> finalColorImageUrls = {};
     Map<String, dynamic> sizesDataForFirestore = {};
 
     try {
-      await _generateNewProductId();
-
-      mainImageUrl = await _uploadImageToImageKit(_mainImageFile!);
-      if (mainImageUrl == null || mainImageUrl.isEmpty) {
-        throw Exception("Не удалось загрузить основное изображение.");
+      // если меняли основное фото — загружаем новое, иначе оставляем старое
+      if (_mainImageFile != null) {
+        mainImageUrl = await _uploadImageToImageKit(_mainImageFile!);
       }
 
+      // если меняли фото цвета — загружаем новое, иначе оставляем старое
       for (var color in _productColors.where((c) => c.isValid)) {
         String colorNameTrimmed = color.name.trim();
         if (color.hasImageForUpload) {
@@ -344,10 +340,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
         }
       }
 
+      // формируем размеры/цвета
       for (var sizeVariant in _sizeVariants.where((s) => s.isValid)) {
         String currentSize = sizeVariant.size.trim();
         Map<String, int> colorQuantitiesForFirestore = {};
-
         for (var cq in sizeVariant.colorQuantities) {
           if (cq.quantity > 0 && finalColorImageUrls.containsKey(cq.colorName)) {
             colorQuantitiesForFirestore[cq.colorName] = cq.quantity;
@@ -357,20 +353,16 @@ class _AddProductScreenState extends State<AddProductScreen> {
           sizesDataForFirestore[currentSize] = {'color_quantities': colorQuantitiesForFirestore};
         }
       }
-
       if (sizesDataForFirestore.isEmpty) {
         throw Exception('Не удалось подготовить данные о размерах. Убедитесь, что у вас есть хотя бы один размер с корректно указанными цветами и их количеством (> 0).');
       }
 
       Map<String, dynamic> productData = {
-        'product_id': _newProductId,
         'name': _name.trim(),
         'description': _description.trim(),
         'price': _price,
         'category_id': _selectedCategoryId,
         'gender': _selectedGender,
-        'creator_id': widget.creatorId,
-        'created_at': FieldValue.serverTimestamp(),
         'main_image_url': mainImageUrl,
         'colors': finalColorImageUrls,
         'sizes': sizesDataForFirestore,
@@ -381,28 +373,26 @@ class _AddProductScreenState extends State<AddProductScreen> {
         'weight': _weight,
         'season': _season,
         'search_name': _name.trim().toLowerCase(),
+        'updated_at': FieldValue.serverTimestamp(),
       };
 
-      DocumentReference docRef = await FirebaseService().firestore.collection('products').add(productData);
+      await FirebaseService().firestore.collection('products').doc(widget.productDocId).update(productData);
 
       if (mounted) {
-        Navigator.pop(context);
+        Navigator.pop(context, true); // можно вернуть true, чтобы обновить список товаров
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Продукт успешно добавлен!'),
+            content: Text('Продукт успешно обновлён!'),
             backgroundColor: Colors.green,
             duration: Duration(seconds: 3),
           ),
         );
       }
-
     } catch (e) {
-      print('Критическая ошибка при добавлении продукта: $e');
-      _showErrorSnackBar('Ошибка при добавлении продукта: ${e.toString()}');
+      print('Ошибка при обновлении продукта: $e');
+      _showErrorSnackBar('Ошибка при обновлении продукта: ${e.toString()}');
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      setState(() => _isLoading = false);
     }
   }
 
@@ -411,12 +401,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
       ScaffoldMessenger.of(context).removeCurrentSnackBar();
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(message, style: TextStyle(color: Colors.white)),
+          content: Text(message, style: const TextStyle(color: Colors.white)),
           backgroundColor: _errorColor,
           duration: Duration(seconds: durationSeconds),
           behavior: SnackBarBehavior.floating,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-          margin: EdgeInsets.all(8.0),
+          margin: const EdgeInsets.all(8.0),
         ),
       );
     }
@@ -425,7 +415,6 @@ class _AddProductScreenState extends State<AddProductScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = _buildThemeData();
-
     final validColorNames = _productColors
         .where((c) => c.isValid)
         .map((c) => c.name.trim())
@@ -442,7 +431,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
           ),
           elevation: 0,
           title: const Text(
-            'Добавить продукт',
+            'Редактировать продукт',
             style: TextStyle(
               color: Colors.white,
               fontWeight: FontWeight.bold,
@@ -451,7 +440,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
           ),
           centerTitle: false,
         ),
-        body: AbsorbPointer(
+        body: _isLoading
+            ? const Center(child: CircularProgressIndicator(color: _primaryColor))
+            : AbsorbPointer(
           absorbing: _isLoading,
           child: Stack(
             children: [
@@ -463,17 +454,40 @@ class _AddProductScreenState extends State<AddProductScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _buildTextField(label: 'Название*', onSaved: (v) => _name = v!, validator: (v) => _validateNotEmpty(v, 'Введите название')),
+                        _buildTextField(
+                          label: 'Название*',
+                          initialValue: _name,
+                          onSaved: (v) => _name = v!,
+                          validator: (v) => _validateNotEmpty(v, 'Введите название'),
+                        ),
                         SizedBox(height: kFieldSpacing),
-                        _buildTextField(label: 'Описание*', maxLines: 3, onSaved: (v) => _description = v!, validator: (v) => _validateNotEmpty(v, 'Введите описание')),
+                        _buildTextField(
+                          label: 'Описание*',
+                          maxLines: 3,
+                          initialValue: _description,
+                          onSaved: (v) => _description = v!,
+                          validator: (v) => _validateNotEmpty(v, 'Введите описание'),
+                        ),
                         SizedBox(height: kFieldSpacing),
-                        _buildTextField(label: 'Бренд*', maxLength: 50, onSaved: (v) => _brand = v!.trim(), validator: (v) => _validateNotEmpty(v, 'Введите бренд')),
+                        _buildTextField(
+                          label: 'Бренд*',
+                          maxLength: 50,
+                          initialValue: _brand,
+                          onSaved: (v) => _brand = v!.trim(),
+                          validator: (v) => _validateNotEmpty(v, 'Введите бренд'),
+                        ),
                         SizedBox(height: kFieldSpacing),
-                        _buildTextField(label: 'Материал*', onSaved: (v) => _material = v!, validator: (v) => _validateNotEmpty(v, 'Введите материал')),
+                        _buildTextField(
+                          label: 'Материал*',
+                          initialValue: _material,
+                          onSaved: (v) => _material = v!,
+                          validator: (v) => _validateNotEmpty(v, 'Введите материал'),
+                        ),
                         SizedBox(height: kFieldSpacing),
                         _buildTextField(
                           label: 'Рейтинг популярности (0-100)',
                           keyboardType: TextInputType.number,
+                          initialValue: _popularityScore.toString(),
                           onSaved: (v) => _popularityScore = int.tryParse(v!) ?? 0,
                           validator: (v) => _validateIntRange(v, 0, 100, 'Введите рейтинг от 0 до 100'),
                         ),
@@ -481,6 +495,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                         _buildTextField(
                           label: 'Скидка (%)',
                           keyboardType: TextInputType.number,
+                          initialValue: _discount.toString(),
                           onSaved: (v) => _discount = int.tryParse(v!) ?? 0,
                           validator: (v) => _validateIntRange(v, 0, 100, 'Введите скидку от 0 до 100'),
                         ),
@@ -488,6 +503,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                         _buildTextField(
                           label: 'Вес (в кг)*',
                           keyboardType: TextInputType.numberWithOptions(decimal: true),
+                          initialValue: _weight > 0 ? _weight.toString() : '',
                           onSaved: (v) => _weight = double.tryParse(v!.replaceAll(',', '.')) ?? 0.0,
                           validator: (v) => _validatePositiveDouble(v, 'Введите корректный положительный вес'),
                         ),
@@ -495,10 +511,10 @@ class _AddProductScreenState extends State<AddProductScreen> {
                         _buildTextField(
                           label: 'Цена*',
                           keyboardType: TextInputType.numberWithOptions(decimal: true),
+                          initialValue: _price > 0 ? _price.toString() : '',
                           onSaved: (v) => _price = double.tryParse(v!.replaceAll(',', '.')) ?? 0.0,
                           validator: (v) => _validatePositiveDouble(v, 'Введите корректную положительную цену'),
                         ),
-
                         SizedBox(height: kFieldSpacing),
                         _buildDropdownField<String>(
                           label: 'Сезон*',
@@ -552,11 +568,11 @@ class _AddProductScreenState extends State<AddProductScreen> {
                         Row(
                           children: [
                             ElevatedButton.icon(
-                              icon: Icon(Icons.image_search),
-                              label: Text('Выбрать'),
+                              icon: const Icon(Icons.image_search),
+                              label: const Text('Выбрать'),
                               onPressed: _pickMainImage,
                             ),
-                            SizedBox(width: 16),
+                            const SizedBox(width: 16),
                             if (_mainImageFile != null)
                               ClipRRect(
                                 borderRadius: BorderRadius.circular(8.0),
@@ -564,11 +580,20 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                     File(_mainImageFile!.path),
                                     height: 60, width: 60, fit: BoxFit.cover
                                 ),
+                              )
+                            else if (_mainImageUrl != null && _mainImageUrl!.isNotEmpty)
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8.0),
+                                child: Image.network(_mainImageUrl!,
+                                  height: 60, width: 60, fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) =>
+                                  const Icon(Icons.broken_image, size: 60, color: _secondaryTextColor),
+                                ),
                               ),
                           ],
                         ),
                         SizedBox(height: kFieldSpacing * 1.5),
-                        Divider(thickness: 1),
+                        const Divider(thickness: 1),
                         SizedBox(height: kFieldSpacing),
 
                         Text("Цвета продукта*", style: theme.textTheme.titleLarge?.copyWith(color: Colors.white)),
@@ -610,7 +635,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                         },
                                       ),
                                     ),
-                                    SizedBox(width: 8),
+                                    const SizedBox(width: 8),
                                     if (color.imageFile != null)
                                       Padding(
                                         padding: const EdgeInsets.symmetric(horizontal: 4.0),
@@ -624,8 +649,9 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                         padding: const EdgeInsets.symmetric(horizontal: 4.0),
                                         child: ClipRRect(
                                           borderRadius: BorderRadius.circular(4.0),
-                                          child: Image.network(color.imageUrl!, height: 36, width: 36, fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) => Icon(Icons.broken_image, size: 36, color: _secondaryTextColor),
+                                          child: Image.network(color.imageUrl!,
+                                            height: 36, width: 36, fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) => const Icon(Icons.broken_image, size: 36, color: _secondaryTextColor),
                                             loadingBuilder: (context, child, loadingProgress) {
                                               if (loadingProgress == null) return child;
                                               return SizedBox(
@@ -655,7 +681,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                       ),
                                     ),
                                     IconButton(
-                                      icon: Icon(Icons.remove_circle_outline, size: 22),
+                                      icon: const Icon(Icons.remove_circle_outline, size: 22),
                                       color: theme.colorScheme.error,
                                       tooltip: 'Удалить этот цвет',
                                       onPressed: () => _removeProductColor(colorIndex),
@@ -669,14 +695,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
                         Align(
                           alignment: Alignment.centerRight,
                           child: TextButton.icon(
-                            icon: Icon(Icons.add_circle_outline, size: 20),
-                            label: Text('Добавить цвет'),
+                            icon: const Icon(Icons.add_circle_outline, size: 20),
+                            label: const Text('Добавить цвет'),
                             onPressed: _addProductColor,
                           ),
                         ),
 
                         SizedBox(height: kFieldSpacing * 1.5),
-                        Divider(thickness: 1),
+                        const Divider(thickness: 1),
                         SizedBox(height: kFieldSpacing),
 
                         Text("Размеры и Наличие*", style: theme.textTheme.titleLarge?.copyWith(color: Colors.white)),
@@ -701,22 +727,22 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                         Expanded(
                                           child: TextFormField(
                                             initialValue: sizeVariant.size,
-                                            decoration: InputDecoration(labelText: 'Размер* (напр. 46, M, L)'),
+                                            decoration: const InputDecoration(labelText: 'Размер* (напр. 46, M, L)'),
                                             validator: (value) => (value == null || value.trim().isEmpty) ? 'Нужен размер' : null,
                                             onChanged: (value) => setState(() => sizeVariant.size = value),
                                           ),
                                         ),
                                         IconButton(
-                                          icon: Icon(Icons.delete_outline),
+                                          icon: const Icon(Icons.delete_outline),
                                           color: theme.colorScheme.error,
                                           tooltip: 'Удалить этот размер',
                                           onPressed: () => _removeSizeEntry(sizeIndex),
                                         ),
                                       ],
                                     ),
-                                    SizedBox(height: 16),
+                                    const SizedBox(height: 16),
                                     Text("Наличие цветов:", style: theme.textTheme.titleMedium?.copyWith(color: Colors.white.withOpacity(0.9))),
-                                    SizedBox(height: 8),
+                                    const SizedBox(height: 8),
                                     if (sizeVariant.colorQuantities.isNotEmpty)
                                       ...sizeVariant.colorQuantities.asMap().entries.map((cqEntry) {
                                         int cqIndex = cqEntry.key;
@@ -725,10 +751,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                           if (validColorNames.contains(colorQuantity.colorName)) colorQuantity.colorName,
                                           ...availableColorsToAdd
                                         ].toSet().toList()..sort();
-
                                         bool isCurrentColorValid = validColorNames.contains(colorQuantity.colorName);
                                         String? currentValue = isCurrentColorValid ? colorQuantity.colorName : null;
-
                                         return Padding(
                                           padding: const EdgeInsets.only(bottom: 8.0),
                                           child: Row(
@@ -759,12 +783,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                                   validator: (value) => (value == null || value.isEmpty) ? 'Выберите' : null,
                                                 ),
                                               ),
-                                              SizedBox(width: 10),
+                                              const SizedBox(width: 10),
                                               Expanded(
                                                 flex: 2,
                                                 child: TextFormField(
                                                   initialValue: colorQuantity.quantity > 0 ? colorQuantity.quantity.toString() : '',
-                                                  decoration: InputDecoration(labelText: 'Кол-во*', isDense: true),
+                                                  decoration: const InputDecoration(labelText: 'Кол-во*', isDense: true),
                                                   keyboardType: TextInputType.number,
                                                   validator: (value) {
                                                     if (value == null || value.isEmpty) return 'Нужно';
@@ -778,16 +802,16 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                                   onChanged: (value) => setState(() => colorQuantity.quantity = int.tryParse(value) ?? 0),
                                                 ),
                                               ),
-                                              SizedBox(width: 4),
+                                              const SizedBox(width: 4),
                                               Padding(
                                                 padding: const EdgeInsets.only(top: 8.0),
                                                 child: IconButton(
-                                                  icon: Icon(Icons.remove_circle_outline, size: 22),
+                                                  icon: const Icon(Icons.remove_circle_outline, size: 22),
                                                   color: theme.colorScheme.error.withOpacity(0.8),
                                                   tooltip: 'Удалить этот цвет из размера',
                                                   onPressed: () => _removeColorQuantityFromSize(sizeIndex, cqIndex),
                                                   padding: EdgeInsets.zero,
-                                                  constraints: BoxConstraints(),
+                                                  constraints: const BoxConstraints(),
                                                 ),
                                               ),
                                             ],
@@ -801,14 +825,14 @@ class _AddProductScreenState extends State<AddProductScreen> {
                                           validColorNames.isEmpty
                                               ? "Сначала определите цвета в секции выше."
                                               : "Нажмите 'Добавить цвет к размеру'.",
-                                          style: TextStyle(color: _secondaryTextColor, fontStyle: FontStyle.italic),
+                                          style: const TextStyle(color: _secondaryTextColor, fontStyle: FontStyle.italic),
                                         ),
                                       ),
                                     Align(
                                       alignment: Alignment.centerRight,
                                       child: TextButton.icon(
-                                        icon: Icon(Icons.add_circle_outline, size: 18),
-                                        label: Text('Добавить цвет к размеру'),
+                                        icon: const Icon(Icons.add_circle_outline, size: 18),
+                                        label: const Text('Добавить цвет к размеру'),
                                         onPressed: availableColorsToAdd.isNotEmpty && validColorNames.isNotEmpty
                                             ? () => _addColorQuantityToSize(sizeIndex)
                                             : null,
@@ -821,24 +845,22 @@ class _AddProductScreenState extends State<AddProductScreen> {
                           );
                         }),
                         OutlinedButton.icon(
-                          icon: Icon(Icons.add),
-                          label: Text('Добавить размер'),
+                          icon: const Icon(Icons.add),
+                          label: const Text('Добавить размер'),
                           onPressed: _addSizeEntry,
                         ),
-
                         SizedBox(height: kFieldSpacing * 1.5),
-                        Divider(thickness: 1),
+                        const Divider(thickness: 1),
                         SizedBox(height: kFieldSpacing * 1.5),
-
                         ElevatedButton(
-                          onPressed: _isLoading ? null : _addProduct,
+                          onPressed: _isLoading ? null : _updateProduct,
                           style: ElevatedButton.styleFrom(
-                              padding: EdgeInsets.symmetric(vertical: 16),
+                              padding: const EdgeInsets.symmetric(vertical: 16),
                               textStyle: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)
                           ),
-                          child: Text(_isLoading ? 'ДОБАВЛЕНИЕ...' : 'ДОБАВИТЬ ПРОДУКТ'),
+                          child: Text(_isLoading ? 'СОХРАНЕНИЕ...' : 'СОХРАНИТЬ ИЗМЕНЕНИЯ'),
                         ),
-                        SizedBox(height: 30),
+                        const SizedBox(height: 30),
                       ],
                     ),
                   ),
@@ -847,7 +869,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
               if (_isLoading)
                 Container(
                   color: Colors.black.withOpacity(0.75),
-                  child: Center(
+                  child: const Center(
                     child: CircularProgressIndicator(
                       valueColor: AlwaysStoppedAnimation<Color>(_primaryColor),
                     ),
@@ -859,6 +881,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
       ),
     );
   }
+
+  // --- Остальные методы (buildTextField, buildDropdownField, validate) такие же как в AddProductScreen
 
   Widget _buildTextField({
     required String label,
@@ -1004,7 +1028,7 @@ class _AddProductScreenState extends State<AddProductScreen> {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
             foregroundColor: _primaryColor,
-            textStyle: TextStyle(fontWeight: FontWeight.w600)
+            textStyle: const TextStyle(fontWeight: FontWeight.w600)
         ),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
@@ -1012,8 +1036,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
             backgroundColor: _primaryColor,
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-            padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            textStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)
+            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+            textStyle: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
@@ -1021,8 +1045,8 @@ class _AddProductScreenState extends State<AddProductScreen> {
             foregroundColor: _primaryColor,
             side: BorderSide(color: _primaryColor, width: 1.5),
             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),
-            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            textStyle: TextStyle(fontWeight: FontWeight.w600)
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            textStyle: const TextStyle(fontWeight: FontWeight.w600)
         ),
       ),
       dividerTheme: DividerThemeData(
@@ -1039,12 +1063,12 @@ class _AddProductScreenState extends State<AddProductScreen> {
           color: _textFieldFillColor,
           borderRadius: BorderRadius.circular(4),
         ),
-        textStyle: TextStyle(color: Colors.white, fontSize: 12),
-        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        textStyle: const TextStyle(color: Colors.white, fontSize: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       ),
       snackBarTheme: SnackBarThemeData(
         backgroundColor: _surfaceColor,
-        contentTextStyle: TextStyle(color: Colors.white),
+        contentTextStyle: const TextStyle(color: Colors.white),
         actionTextColor: _primaryColor,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.0)),

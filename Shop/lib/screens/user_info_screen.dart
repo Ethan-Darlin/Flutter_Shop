@@ -7,7 +7,11 @@ import 'package:shop/screens/productListScreen.dart';
 import 'package:shop/screens/auth_screen.dart';
 import 'package:shop/screens/scan_page.dart';
 import 'package:shop/screens/supplierApplicationsScreen.dart';
-import 'createAddressScreen.dart'; 
+import 'package:shop/screens/adminReviewsScreen.dart';
+import 'package:shop/screens/adminProductModerationScreen.dart';
+import 'package:shop/screens/myProductsScreen.dart';
+import 'package:shop/screens/editProductScreen.dart';
+import 'createAddressScreen.dart';
 
 class UserInfoScreen extends StatefulWidget {
   const UserInfoScreen({
@@ -16,8 +20,8 @@ class UserInfoScreen extends StatefulWidget {
     required this.emailVerified,
   }) : super(key: key);
 
-  final String userId; 
-  final bool emailVerified; 
+  final String userId;
+  final bool emailVerified;
 
   @override
   _UserInfoScreenState createState() => _UserInfoScreenState();
@@ -36,7 +40,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
   void _redirectToAuthScreen() {
     Navigator.pushReplacement(
       context,
-      MaterialPageRoute(builder: (context) => AuthScreen()), 
+      MaterialPageRoute(builder: (context) => AuthScreen()),
     );
   }
 
@@ -75,17 +79,17 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
               children: [
                 Text('User name: $username'),
                 Text('User email: $email'),
-                Text('Email verified: ${widget.emailVerified}'), 
-                if (!widget.emailVerified) 
+                Text('Email verified: ${widget.emailVerified}'),
+                if (!widget.emailVerified)
                   TextButton(
                     onPressed: () {
-                      FirebaseService().onVerifyEmail(); 
+                      FirebaseService().onVerifyEmail();
                     },
                     child: Text('Подтвердить Email'),
                   ),
                 ElevatedButton(
-                  onPressed: _refreshData, 
-                  child: Text('Обновить данные'), 
+                  onPressed: _refreshData,
+                  child: Text('Обновить данные'),
                 ),
                 TextButton(
                   onPressed: () {
@@ -106,7 +110,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => AddProductScreen(creatorId: widget.userId)), 
+                      MaterialPageRoute(builder: (context) => AddProductScreen(creatorId: widget.userId)),
                     );
                   },
                   child: Text('Добавить продукты'),
@@ -115,7 +119,7 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                   onPressed: () {
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => AddCategoryScreen()), 
+                      MaterialPageRoute(builder: (context) => AddCategoryScreen()),
                     );
                   },
                   child: Text('Добавить категорию'),
@@ -137,6 +141,33 @@ class _UserInfoScreenState extends State<UserInfoScreen> {
                     );
                   },
                   child: Text('Заявки поставщиков'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => AdminReviewsScreen()),
+                    );
+                  },
+                  child: Text('Модерирование комментариев'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => AdminProductModerationScreen()),
+                    );
+                  },
+                  child: Text('Админ товары'),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => MyProductsScreen()),
+                    );
+                  },
+                  child: Text('мои товары'),
                 ),
                 IconButton(
                   icon: Icon(Icons.qr_code_scanner),

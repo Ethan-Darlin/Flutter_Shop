@@ -100,16 +100,21 @@ class _QRScanPageState extends State<QRScanPage> {
     return Scaffold(
       backgroundColor: _backgroundColor,
       appBar: AppBar(
+        backgroundColor: _surfaceColor,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        elevation: 0,
         title: const Text(
           'Сканирование QR-кода',
-          style: TextStyle(color: Colors.white), 
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
         ),
-        backgroundColor: _surfaceColor,
-        elevation: 0,
-        iconTheme: IconThemeData(
-          color: Colors.white, 
-        ),
-
+        centerTitle: false,
       ),
       body: Column(
         children: <Widget>[

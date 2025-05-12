@@ -54,21 +54,25 @@ class _CreateAddressScreenState extends State<CreateAddressScreen> {
 
   @override
   Widget build(BuildContext context) {
+    const Color _surfaceColor = Color(0xFF1f1f24);
     return Scaffold(
+
       appBar: AppBar(
-        backgroundColor: const Color(0xFF18171c),
+        backgroundColor: _surfaceColor,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back, color: Colors.white),
-          onPressed: () => Navigator.pop(context),
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
         ),
-        title: Text(
+        elevation: 0,
+        title: const Text(
           'Создать новый адрес',
           style: TextStyle(
             color: Colors.white,
-            fontWeight: FontWeight.w600,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
           ),
         ),
-        iconTheme: IconThemeData(color: Colors.white),
+        centerTitle: false,
       ),
       body: SafeArea(
         child: Column(

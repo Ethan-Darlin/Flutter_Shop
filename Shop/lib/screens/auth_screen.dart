@@ -205,6 +205,7 @@ class _AuthScreenState extends State<AuthScreen> {
         elevation: 0,
         automaticallyImplyLeading: false,
       ),
+
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(

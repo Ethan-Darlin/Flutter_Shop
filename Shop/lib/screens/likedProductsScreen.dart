@@ -99,10 +99,21 @@ class _LikedProductsScreenState extends State<LikedProductsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Избранное', style: TextStyle(color: _textColor)),
-        backgroundColor: _backgroundColor,
+        backgroundColor: _surfaceColor,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         elevation: 0,
-        iconTheme: IconThemeData(color: _textColor),
+        title: const Text(
+          'Избранное',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        centerTitle: false,
       ),
       backgroundColor: _backgroundColor,
       body: FutureBuilder<List<Map<String, dynamic>>>(
