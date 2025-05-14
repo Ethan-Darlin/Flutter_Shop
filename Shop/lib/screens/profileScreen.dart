@@ -655,14 +655,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
       );
     }
 
-    int loyaltyPoints = 0;
-    final rawPoints = userData!['loyalty_points'];
-    if (rawPoints is int) {
-      loyaltyPoints = rawPoints;
-    } else if (rawPoints is String) {
-      loyaltyPoints = int.tryParse(rawPoints) ?? 0;
+    // Функция для корректного парсинга баллов как double
+    double parseLoyaltyPoints(dynamic rawPoints) {
+      if (rawPoints is double) return rawPoints;
+      if (rawPoints is int) return rawPoints.toDouble();
+      if (rawPoints is String) return double.tryParse(rawPoints) ?? 0.0;
+      return 0.0;
     }
 
+    double loyaltyPoints = parseLoyaltyPoints(userData?['loyalty_points']);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
@@ -717,7 +718,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                     Icon(Icons.stars, color: Colors.amber, size: 20),
                     SizedBox(width: 5),
                     Text(
-                      'Баллы: $loyaltyPoints', // <--- Используем переменную
+                      'Баллы: ${loyaltyPoints.toStringAsFixed(2)}',
                       style: TextStyle(
                         color: Colors.amber,
                         fontWeight: FontWeight.bold,
