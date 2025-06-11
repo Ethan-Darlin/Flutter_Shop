@@ -623,4 +623,39 @@
         };
       }).toList();
     }
+    Future<List<Map<String, dynamic>>> getCategories() async {
+      try {
+        QuerySnapshot querySnapshot = await firestore.collection('categories').get();
+        return querySnapshot.docs.map((doc) {
+          return {
+            'category_id': doc['category_id'], // Должно быть число
+            'name': doc['name'],
+          };
+        }).toList();
+      } catch (e) {
+        print('Error getting categories: $e');
+        return [];
+      }
+    }
+    // В файл firebase_service.dart
+    Future<void> updateUserData1(String username, String email) async {
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user == null) throw Exception('User not authenticated');
+
+        // Обновляем email в Firebase Auth
+        if (email.isNotEmpty && email != user.email) {
+          await user.updateEmail(email);
+        }
+
+        // Обновляем данные в Firestore
+        await firestore.collection('users').doc(user.uid).update({
+          'username': username,
+          'email': email,
+        });
+      } catch (e) {
+        print('Error updating user data: $e');
+        throw e;
+      }
+    }
   }

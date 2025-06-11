@@ -26,6 +26,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<List<Map<String, dynamic>>>? similarProductsFuture;
   int _selectedIndex = 2;
   bool _isPurchaseHistoryExpanded = false;
+  bool _isEditing = false; // Флаг режима редактирования
+  TextEditingController _usernameController = TextEditingController();
+  TextEditingController _emailController = TextEditingController();
 
   static const Color _backgroundColor = Color(0xFF18171c);
   static const Color _surfaceColor = Color(0xFF1f1f24);
@@ -38,6 +41,60 @@ class _ProfileScreenState extends State<ProfileScreen> {
     super.initState();
     _fetchUserData();
     _fetchUserOrderItems();
+  }
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _emailController.dispose();
+    super.dispose();
+  }
+
+  // Начало редактирования
+  void _startEditing() {
+    setState(() {
+      _isEditing = true;
+      _usernameController.text = userData?['username'] ?? '';
+      _emailController.text = userData?['email'] ?? '';
+    });
+  }
+
+  // Сохранение изменений
+  Future<void> _saveChanges() async {
+    try {
+      // Обновление данных в Firebase
+      await FirebaseService().updateUserData1(
+        _usernameController.text,
+        _emailController.text,
+      );
+
+      // Обновление локальных данных
+      setState(() {
+        userData?['username'] = _usernameController.text;
+        userData?['email'] = _emailController.text;
+        _isEditing = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Данные успешно обновлены'),
+          backgroundColor: Colors.green,
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Ошибка обновления данных: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  // Отмена редактирования
+  void _cancelEditing() {
+    setState(() {
+      _isEditing = false;
+    });
   }
   String getUserRoleLabel(String? role) {
     switch (role) {
@@ -685,33 +742,92 @@ class _ProfileScreenState extends State<ProfileScreen> {
               children: [
                 Row(
                   children: [
-                    Text(
-                      userData!['username'] ?? 'Пользователь',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
-                    ),
-                    SizedBox(width: 10),
-                    Container(
-                      padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                      decoration: BoxDecoration(
-                        color: _primaryColor.withOpacity(0.16),
-                        borderRadius: BorderRadius.circular(10),
+                    // Режим редактирования для имени пользователя
+                    if (!_isEditing)
+                      Text(
+                        userData!['username'] ?? 'Пользователь',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white),
                       ),
-                      child: Text(
-                        getUserRoleLabel(userData!['role']),
-                        style: TextStyle(
-                          color: _primaryColor,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w600,
+                    if (_isEditing)
+                      Expanded(
+                        child: TextField(
+                          controller: _usernameController,
+                          style: TextStyle(color: Colors.white, fontSize: 18),
+                          decoration: InputDecoration(
+                            hintText: 'Имя пользователя',
+                            hintStyle: TextStyle(color: Colors.white54),
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                          ),
                         ),
                       ),
-                    ),
+
+                    // Роль пользователя показываем ТОЛЬКО когда не в режиме редактирования
+                    if (!_isEditing) SizedBox(width: 10),
+                    if (!_isEditing)
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: _primaryColor.withOpacity(0.16),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(
+                          getUserRoleLabel(userData!['role']),
+                          style: TextStyle(
+                            color: _primaryColor,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+
+                    Spacer(),
+
+                    // Кнопки управления редактированием
+                    if (!_isEditing)
+                      IconButton(
+                        icon: Icon(Icons.settings, color: Colors.white54, size: 20),
+                        onPressed: _startEditing,
+                        padding: EdgeInsets.zero,
+                        constraints: BoxConstraints(),
+                      ),
+                    if (_isEditing)
+                      Row(
+                        children: [
+                          IconButton(
+                            icon: Icon(Icons.check, color: Colors.green, size: 20),
+                            onPressed: _saveChanges,
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.close, color: Colors.red, size: 20),
+                            onPressed: _cancelEditing,
+                            padding: EdgeInsets.zero,
+                            constraints: BoxConstraints(),
+                          ),
+                        ],
+                      ),
                   ],
                 ),
                 SizedBox(height: 4),
-                Text(
-                  userData!['email'] ?? 'Email не указан',
-                  style: TextStyle(fontSize: 14, color: _secondaryTextColor),
-                ),
+                // Режим редактирования для email
+                if (!_isEditing)
+                  Text(
+                    userData!['email'] ?? 'Email не указан',
+                    style: TextStyle(fontSize: 14, color: _secondaryTextColor),
+                  ),
+                if (_isEditing)
+                  TextField(
+                    controller: _emailController,
+                    style: TextStyle(color: _secondaryTextColor, fontSize: 14),
+                    decoration: InputDecoration(
+                      hintText: 'Email',
+                      hintStyle: TextStyle(color: _secondaryTextColor),
+                      border: InputBorder.none,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
                 SizedBox(height: 8),
                 Row(
                   children: [
@@ -1545,7 +1661,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch, // Растягиваем кнопки
         children: [
           ElevatedButton.icon(
-            icon: Icon(Icons.business_center_outlined, size: 20),
+            icon: Icon(Icons.business_center_outlined, size: 20,color: Colors.white),
             label: Text('Стать поставщиком'),
             style: ElevatedButton.styleFrom(
               backgroundColor: _primaryColor,
@@ -1581,7 +1697,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           SizedBox(height: 12),
 
           ElevatedButton.icon(
-            icon: Icon(Icons.logout, size: 20),
+            icon: Icon(Icons.logout, size: 20,color: _primaryColor),
             label: Text('Выйти из аккаунта'),
             style: ElevatedButton.styleFrom(
               backgroundColor: _surfaceColor, // Цвет фона как у карточек
